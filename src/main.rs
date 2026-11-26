@@ -24,6 +24,7 @@ use eframe::egui::{self, Color32};
 use emulator::{AdbController, EmulatorState};
 use git::{DiffHunk, GitFileChange, GitManager, WorktreeInfo};
 use regex::Regex;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -49,6 +50,7 @@ struct VictiniApp {
     kanban: AgentKanbanManager,
     kanban_composer: KanbanComposerState,
     chat_mgr: ChatSessionManager,
+    project_chats: HashMap<PathBuf, ChatSessionManager>,
     studio_editor: StudioEditorState,
     beebox_ui: BeeBoxUiState,
     chat_composer_ui: ChatComposerUiState,
@@ -104,6 +106,15 @@ impl VictiniApp {
         let reaper = MemoryReaper::new(30);
         let kanban = AgentKanbanManager::load_for_project(&active_root);
         let chat_mgr = ChatSessionManager::load_for_project(&active_root, &branch_name);
+        let mut project_chats = HashMap::new();
+        for proj in &project_mgr.projects {
+            if proj.path == active_root {
+                project_chats.insert(proj.path.clone(), chat_mgr.clone());
+            } else {
+                let mgr = ChatSessionManager::load_for_project(&proj.path, &proj.last_branch);
+                project_chats.insert(proj.path.clone(), mgr);
+            }
+        }
 
         let mut studio_editor = StudioEditorState::default();
         let active_diff = if let Some(first_change) = file_changes.first() {
@@ -128,6 +139,7 @@ impl VictiniApp {
             kanban,
             kanban_composer: KanbanComposerState::default(),
             chat_mgr,
+            project_chats,
             studio_editor,
             beebox_ui: BeeBoxUiState::default(),
             chat_composer_ui: ChatComposerUiState::default(),
@@ -311,11 +323,22 @@ impl VictiniApp {
     }
 
     fn switch_to_project(&mut self, new_root: PathBuf) {
+        let old_root = self.project_mgr.active_project.clone();
+        self.chat_mgr.save(&old_root);
+        self.project_chats.insert(old_root, self.chat_mgr.clone());
+
+        self.project_mgr.ensure_project_in_list(&new_root);
         self.project_mgr.active_project = new_root.clone();
         let _ = self.project_mgr.save();
         self.refresh_workspace();
         self.kanban = AgentKanbanManager::load_for_project(&new_root);
-        self.chat_mgr = ChatSessionManager::load_for_project(&new_root, &self.branch_name);
+        self.chat_mgr = self
+            .project_chats
+            .get(&new_root)
+            .cloned()
+            .unwrap_or_else(|| ChatSessionManager::load_for_project(&new_root, &self.branch_name));
+        self.project_chats
+            .insert(new_root, self.chat_mgr.clone());
         self.layout.center_mode = CenterViewMode::ChatTimeline;
     }
 
@@ -842,7 +865,9 @@ impl eframe::App for VictiniApp {
                     &self.theme,
                     self.layout.left_mini_mode,
                     self.layout.center_mode,
-                    &proj_name,
+                    &self.project_mgr,
+                    &self.project_chats,
+                    &self.chat_mgr,
                     &self.branch_name,
                     is_streaming,
                     &mut self.sidebar_show_agents_tab,
@@ -850,8 +875,6 @@ impl eframe::App for VictiniApp {
                     &self.file_changes,
                     &self.discovered_skills,
                     &self.discovered_agents,
-                    &self.chat_mgr.threads,
-                    self.chat_mgr.active_thread_idx,
                 );
             });
 
@@ -869,6 +892,8 @@ impl eframe::App for VictiniApp {
                     SidebarAction::NewChatThread => {
                         self.chat_mgr.create_default_thread(&self.branch_name);
                         self.chat_mgr.save(&project_root);
+                        self.project_chats
+                            .insert(project_root.clone(), self.chat_mgr.clone());
                         self.layout.center_mode = CenterViewMode::ChatTimeline;
                     }
                     SidebarAction::SelectChatThread(idx) => {
@@ -879,6 +904,8 @@ impl eframe::App for VictiniApp {
                                 .active_thread()
                                 .agent_mode
                                 .resolve_core_agent(self.active_agent);
+                            self.project_chats
+                                .insert(project_root.clone(), self.chat_mgr.clone());
                             self.layout.center_mode = CenterViewMode::ChatTimeline;
                         }
                     }
@@ -890,6 +917,68 @@ impl eframe::App for VictiniApp {
                                     self.chat_mgr.threads.len().saturating_sub(1);
                             }
                             self.chat_mgr.save(&project_root);
+                            self.project_chats
+                                .insert(project_root.clone(), self.chat_mgr.clone());
+                        }
+                    }
+                    SidebarAction::ToggleProjectExpand(p) => {
+                        self.project_mgr.toggle_expanded(&p);
+                    }
+                    SidebarAction::NewProjectChatThread(p) => {
+                        if p != project_root {
+                            self.switch_to_project(p.clone());
+                        }
+                        self.chat_mgr.create_default_thread(&self.branch_name);
+                        self.chat_mgr.save(&p);
+                        self.project_chats.insert(p, self.chat_mgr.clone());
+                        self.layout.center_mode = CenterViewMode::ChatTimeline;
+                    }
+                    SidebarAction::SelectProjectThread {
+                        project_path,
+                        thread_idx,
+                    } => {
+                        if project_path != project_root {
+                            self.switch_to_project(project_path.clone());
+                        }
+                        if thread_idx < self.chat_mgr.threads.len() {
+                            self.chat_mgr.active_thread_idx = thread_idx;
+                            self.active_agent = self
+                                .chat_mgr
+                                .active_thread()
+                                .agent_mode
+                                .resolve_core_agent(self.active_agent);
+                            self.chat_mgr.save(&project_path);
+                            self.project_chats
+                                .insert(project_path, self.chat_mgr.clone());
+                        }
+                        self.layout.center_mode = CenterViewMode::ChatTimeline;
+                    }
+                    SidebarAction::DeleteProjectThread {
+                        project_path,
+                        thread_idx,
+                    } => {
+                        if project_path == project_root {
+                            if self.chat_mgr.threads.len() > 1
+                                && thread_idx < self.chat_mgr.threads.len()
+                            {
+                                self.chat_mgr.threads.remove(thread_idx);
+                                if self.chat_mgr.active_thread_idx >= self.chat_mgr.threads.len() {
+                                    self.chat_mgr.active_thread_idx =
+                                        self.chat_mgr.threads.len().saturating_sub(1);
+                                }
+                                self.chat_mgr.save(&project_root);
+                                self.project_chats
+                                    .insert(project_root.clone(), self.chat_mgr.clone());
+                            }
+                        } else if let Some(mgr) = self.project_chats.get_mut(&project_path) {
+                            if mgr.threads.len() > 1 && thread_idx < mgr.threads.len() {
+                                mgr.threads.remove(thread_idx);
+                                if mgr.active_thread_idx >= mgr.threads.len() {
+                                    mgr.active_thread_idx =
+                                        mgr.threads.len().saturating_sub(1);
+                                }
+                                mgr.save(&project_path);
+                            }
                         }
                     }
                     SidebarAction::OpenDedicatedCoreAgent(ag) => {

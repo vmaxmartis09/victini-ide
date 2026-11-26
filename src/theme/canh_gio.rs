@@ -55,74 +55,74 @@ impl CanhTheme {
         self.on_accent
     }
 
-    /// Warm Slate Dark Mode (Default — modern warm graphite & obsidian, zero eye strain, zero muddy tones)
+    /// Warm Obsidian Dark Mode (Default — Agy / Claude / Linear inspired 3-tier warm obsidian)
     pub fn warm_dark() -> Self {
         Self {
             id: CanhId::WarmDark,
-            name: "Tối Ấm (Warm Slate)",
+            name: "Tối Ấm (Warm Obsidian)",
             is_dark: true,
-            bg_ink: Color32::from_rgb(0x13, 0x14, 0x17),         // #131417 Sleek Graphite Sidebar
-            bg_field: Color32::from_rgb(0x19, 0x1B, 0x1F),       // #191B1F Neutral Soft Slate Canvas
-            panel_bg: Color32::from_rgb(0x20, 0x22, 0x27),       // #202227 Panel Surface
-            panel_hover: Color32::from_rgb(0x28, 0x2A, 0x31),    // #282A31 Hover Surface
-            surface_1: Color32::from_rgb(0x20, 0x22, 0x27),      // #202227 Column Container
-            surface_2: Color32::from_rgb(0x26, 0x29, 0x30),      // #262930 Card Surface
-            surface_3: Color32::from_rgb(0x2E, 0x31, 0x3A),      // #2E313A Active Surface
-            input_bg: Color32::from_rgb(0x15, 0x17, 0x1B),       // #15171B Inset Input Field
-            code_bg: Color32::from_rgb(0x12, 0x13, 0x16),        // #121316 Code Box
-            chip_bg: Color32::from_rgb(0x26, 0x29, 0x30),        // #262930 Chip badge
-            border: Color32::from_rgb(0x2B, 0x2E, 0x36),         // #2B2E36 Subtle Divider Border
-            border_strong: Color32::from_rgb(0x38, 0x3C, 0x46),  // #383C46 Card Border
-            text_paper: Color32::from_rgb(0xE6, 0xE9, 0xEE),     // #E6E9EE Clean Warm White
-            text_silver: Color32::from_rgb(0x8B, 0x92, 0x9E),    // #8B929E Soft Slate Muted
-            accent_pop: Color32::from_rgb(0xE0, 0x6C, 0x53),     // #E06C53 Warm Terracotta Coral
-            accent_surface: Color32::from_rgba_unmultiplied(0xE0, 0x6C, 0x53, 0x1C),
+            bg_ink: Color32::from_rgb(0x14, 0x14, 0x16),         // #141416 Layer 0: Deep Warm Obsidian Sidebar
+            bg_field: Color32::from_rgb(0x1B, 0x1B, 0x1E),       // #1B1B1E Layer 1: Main Central Canvas
+            panel_bg: Color32::from_rgb(0x23, 0x23, 0x27),       // #232327 Layer 2: Elevated Panel / Card
+            panel_hover: Color32::from_rgb(0x2B, 0x2B, 0x30),    // #2B2B30 Hover Surface
+            surface_1: Color32::from_rgb(0x22, 0x22, 0x26),      // #222226 Container Surface
+            surface_2: Color32::from_rgb(0x28, 0x28, 0x2D),      // #28282D Card / Message Capsule
+            surface_3: Color32::from_rgb(0x31, 0x31, 0x37),      // #313137 Active / Selected Tab
+            input_bg: Color32::from_rgb(0x16, 0x16, 0x19),       // #161619 Inset Input Field
+            code_bg: Color32::from_rgb(0x13, 0x13, 0x15),        // #131315 Code Block / Pill
+            chip_bg: Color32::from_rgb(0x28, 0x28, 0x2D),        // #28282D Subtle Monochrome Chip
+            border: Color32::from_rgb(0x2E, 0x2E, 0x34),         // #2E2E34 1px Hairline Border
+            border_strong: Color32::from_rgb(0x3E, 0x3E, 0x46),  // #3E3E46 Active Card Border
+            text_paper: Color32::from_rgb(0xEC, 0xEA, 0xE4),     // #ECEAE4 Soft Ivory Primary Text
+            text_silver: Color32::from_rgb(0x94, 0x92, 0x8C),    // #94928C Warm Stone Secondary Text
+            accent_pop: Color32::from_rgb(0xD9, 0x77, 0x57),     // #D97757 Warm Terracotta Primary Accent
+            accent_surface: Color32::from_rgba_unmultiplied(0xD9, 0x77, 0x57, 0x22),
             on_accent: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-            tag_red: Color32::from_rgb(0xD9, 0x61, 0x50),
-            tag_red_bg: Color32::from_rgba_unmultiplied(0xD9, 0x61, 0x50, 0x24),
-            success: Color32::from_rgb(0x4E, 0xBA, 0x87),
-            warning: Color32::from_rgb(0xE0, 0xA0, 0x45),
-            danger: Color32::from_rgb(0xE0, 0x5D, 0x52),
-            info: Color32::from_rgb(0x5E, 0x98, 0xE6),
-            diff_add_bg: Color32::from_rgba_premultiplied(0x2E, 0x7D, 0x32, 0x30),
+            tag_red: Color32::from_rgb(0xD9, 0x77, 0x57),
+            tag_red_bg: Color32::from_rgba_unmultiplied(0xD9, 0x77, 0x57, 0x1E),
+            success: Color32::from_rgb(0x56, 0xB6, 0x86),
+            warning: Color32::from_rgb(0xDF, 0xA2, 0x48),
+            danger: Color32::from_rgb(0xDE, 0x60, 0x56),
+            info: Color32::from_rgb(0x6B, 0x9E, 0xDF),
+            diff_add_bg: Color32::from_rgba_premultiplied(0x2E, 0x7D, 0x32, 0x2E),
             diff_add_fg: Color32::from_rgb(0x81, 0xC7, 0x84),
-            diff_del_bg: Color32::from_rgba_premultiplied(0xC6, 0x28, 0x28, 0x30),
+            diff_del_bg: Color32::from_rgba_premultiplied(0xC6, 0x28, 0x28, 0x2E),
             diff_del_fg: Color32::from_rgb(0xE5, 0x73, 0x73),
         }
     }
 
-    /// Warm Paper Light Mode (Clean ivory & porcelain tones, zero harsh #FFFFFF glare)
+    /// Warm Alabaster Light Mode (Agy / Claude Warm Paper & Porcelain, zero stark glare)
     pub fn warm_light() -> Self {
         Self {
             id: CanhId::WarmLight,
-            name: "Sáng Ấm (Warm Paper)",
+            name: "Sáng Ấm (Warm Alabaster)",
             is_dark: false,
-            bg_ink: Color32::from_rgb(0xF0, 0xF2, 0xF5),         // #F0F2F5 Light Slate Sidebar
-            bg_field: Color32::from_rgb(0xF7, 0xF8, 0xFA),       // #F7F8FA Soft Paper Canvas
-            panel_bg: Color32::from_rgb(0xFF, 0xFF, 0xFF),       // #FFFFFF Crisp Card Surface
-            panel_hover: Color32::from_rgb(0xEC, 0xEE, 0xF2),    // #ECEEF2 Hover
-            surface_1: Color32::from_rgb(0xFF, 0xFF, 0xFF),      // #FFFFFF Column Container
-            surface_2: Color32::from_rgb(0xF7, 0xF8, 0xFA),      // #F7F8FA Secondary Card
-            surface_3: Color32::from_rgb(0xE8, 0xEB, 0xF0),      // #E8EBF0 Active Surface
+            bg_ink: Color32::from_rgb(0xEF, 0xEC, 0xE6),         // #EFECE6 Layer 0: Warm Cream Sidebar
+            bg_field: Color32::from_rgb(0xF8, 0xF6, 0xF1),       // #F8F6F1 Layer 1: Warm Alabaster Canvas
+            panel_bg: Color32::from_rgb(0xFF, 0xFF, 0xFF),       // #FFFFFF Layer 2: Crisp Card Surface
+            panel_hover: Color32::from_rgb(0xEA, 0xE6, 0xDE),    // #EAE6DE Hover Surface
+            surface_1: Color32::from_rgb(0xF2, 0xEF, 0xE9),      // #F2EFE9 Container Surface
+            surface_2: Color32::from_rgb(0xFF, 0xFF, 0xFF),      // #FFFFFF Elevated Card / Bubble
+            surface_3: Color32::from_rgb(0xE5, 0xE0, 0xD6),      // #E5E0D6 Active Tab
             input_bg: Color32::from_rgb(0xFF, 0xFF, 0xFF),       // #FFFFFF Clean Input Field
-            code_bg: Color32::from_rgb(0xF0, 0xF2, 0xF5),        // #F0F2F5 Warm Code Box
-            chip_bg: Color32::from_rgb(0xEA, 0xED, 0xF2),        // #EAEDF2 Chip badge
-            border: Color32::from_rgb(0xE1, 0xE4, 0xE8),         // #E1E4E8 Soft Hairline Border
-            border_strong: Color32::from_rgb(0xD0, 0xD5, 0xDD),  // #D0D5DD Defined Border
-            text_paper: Color32::from_rgb(0x1E, 0x21, 0x25),     // #1E2125 Deep Charcoal Ink
-            text_silver: Color32::from_rgb(0x66, 0x6F, 0x7B),    // #666F7B Balanced Slate Grey
-            accent_pop: Color32::from_rgb(0xD9, 0x5A, 0x38),     // #D95A38 Terracotta Accent
-            accent_surface: Color32::from_rgba_unmultiplied(0xD9, 0x5A, 0x38, 0x1A),
+            code_bg: Color32::from_rgb(0xEE, 0xEB, 0xE3),        // #EEEBE3 Warm Code Pill / Block
+            chip_bg: Color32::from_rgb(0xE9, 0xE5, 0xDC),        // #E9E5DC Subtle Chip
+            border: Color32::from_rgb(0xE2, 0xDD, 0xD5),         // #E2DDD5 Hairline Border
+            border_strong: Color32::from_rgb(0xCC, 0xC5, 0xB9),  // #CCC5B9 Defined Border
+            text_paper: Color32::from_rgb(0x1F, 0x1E, 0x1B),     // #1F1E1B Deep Charcoal Ink
+            text_silver: Color32::from_rgb(0x6E, 0x6A, 0x63),    // #6E6A63 Warm Umber Muted
+            accent_pop: Color32::from_rgb(0xC6, 0x61, 0x42),     // #C66142 Terracotta Accent
+            accent_surface: Color32::from_rgba_unmultiplied(0xC6, 0x61, 0x42, 0x1A),
             on_accent: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-            tag_red: Color32::from_rgb(0xC8, 0x48, 0x3C),
-            tag_red_bg: Color32::from_rgba_unmultiplied(0xC8, 0x48, 0x3C, 0x18),
+            tag_red: Color32::from_rgb(0xC6, 0x61, 0x42),
+            tag_red_bg: Color32::from_rgba_unmultiplied(0xC6, 0x61, 0x42, 0x18),
             success: Color32::from_rgb(0x2D, 0x8A, 0x5B),
             warning: Color32::from_rgb(0xC2, 0x7D, 0x16),
             danger: Color32::from_rgb(0xC8, 0x42, 0x39),
             info: Color32::from_rgb(0x32, 0x6D, 0xC2),
-            diff_add_bg: Color32::from_rgba_premultiplied(0x38, 0x8E, 0x3C, 0x28),
+            diff_add_bg: Color32::from_rgba_premultiplied(0x38, 0x8E, 0x3C, 0x24),
             diff_add_fg: Color32::from_rgb(0x2E, 0x7D, 0x32),
-            diff_del_bg: Color32::from_rgba_premultiplied(0xD3, 0x2F, 0x2F, 0x28),
+            diff_del_bg: Color32::from_rgba_premultiplied(0xD3, 0x2F, 0x2F, 0x24),
             diff_del_fg: Color32::from_rgb(0xC6, 0x28, 0x28),
         }
     }

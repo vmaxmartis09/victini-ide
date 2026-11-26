@@ -3,12 +3,18 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+fn default_expanded() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProjectEntry {
     pub name: String,
     pub path: PathBuf,
     pub last_branch: String,
     pub pinned: bool,
+    #[serde(default = "default_expanded")]
+    pub expanded: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -61,6 +67,7 @@ impl ProjectManager {
                     path: canonical,
                     last_branch: "main".to_string(),
                     pinned: true,
+                    expanded: true,
                 },
             );
         }
@@ -84,6 +91,7 @@ impl ProjectManager {
                                 path: canonical,
                                 last_branch: "main".to_string(),
                                 pinned: false,
+                                expanded: true,
                             });
                         }
                     }
@@ -107,6 +115,13 @@ impl ProjectManager {
     pub fn toggle_pin(&mut self, path: &Path) {
         if let Some(proj) = self.projects.iter_mut().find(|p| p.path == path) {
             proj.pinned = !proj.pinned;
+            let _ = self.save();
+        }
+    }
+
+    pub fn toggle_expanded(&mut self, path: &Path) {
+        if let Some(proj) = self.projects.iter_mut().find(|p| p.path == path) {
+            proj.expanded = !proj.expanded;
             let _ = self.save();
         }
     }

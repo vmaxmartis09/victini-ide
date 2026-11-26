@@ -1,6 +1,6 @@
 use crate::theme::{CanhTheme, Lucide};
 use crate::ui::layout_state::{CenterViewMode, LayoutState, ResponsiveBreakpoint};
-use egui::{vec2, Align, Color32, Frame, Layout, Margin, Rounding, Ui};
+use egui::{vec2, Align, Color32, Frame, Layout, Margin, Rounding, Stroke, Ui};
 
 pub enum HeaderAction {
     ToggleLeftSidebar,
@@ -35,10 +35,10 @@ pub fn icon_btn(
     tooltip: &str,
 ) -> egui::Response {
     ui.add_sized(
-        vec2(24.0, 24.0),
+        vec2(26.0, 26.0),
         egui::Button::new(egui::RichText::new(icon).color(color).size(13.0))
             .fill(bg)
-            .rounding(Rounding::same(5.0)),
+            .rounding(Rounding::same(6.0)),
     )
     .on_hover_text(tooltip)
 }
@@ -49,32 +49,35 @@ pub fn render_transparent_header(
     theme: &CanhTheme,
     project_name: &str,
     branch_name: &str,
-    active_thread_title: &str,
+    _active_thread_title: &str,
     running_bg_count: usize,
     layout: &LayoutState,
     breakpoint: ResponsiveBreakpoint,
 ) -> Option<HeaderAction> {
     let mut action = None;
-    let badge = project_badge_code(project_name);
 
     ui.horizontal(|ui| {
         let pad = match breakpoint {
             ResponsiveBreakpoint::Compact => 12.0,
-            _ => 68.0,
+            _ => 72.0,
         };
         ui.add_space(pad);
 
-        // Sidebar Toggle Icon Button (Lucide::PANEL_LEFT)
+        // 1. Left: Sidebar Toggle + Clean Active Project & Branch Pill
         let left_active = layout.show_left_sidebar && !layout.left_mini_mode;
         if icon_btn(
             ui,
             Lucide::PANEL_LEFT,
             if left_active {
-                theme.accent_pop
+                theme.text_paper
             } else {
                 theme.text_silver
             },
-            Color32::TRANSPARENT,
+            if left_active {
+                theme.surface_2
+            } else {
+                Color32::TRANSPARENT
+            },
             "Đóng/mở Sidebar trái (⌘B)",
         )
         .clicked()
@@ -82,184 +85,177 @@ pub fn render_transparent_header(
             action = Some(HeaderAction::ToggleLeftSidebar);
         }
 
-        ui.add_space(4.0);
+        ui.add_space(6.0);
 
-        // Dynamic Project Badge [LA] landorus / branch / Thread Title
-        let badge_resp = Frame::none()
-            .fill(theme.tag_red_bg)
-            .rounding(Rounding::same(4.0))
-            .inner_margin(Margin::symmetric(5.0, 1.5))
-            .show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new(&badge)
-                        .color(theme.tag_red)
-                        .strong()
-                        .size(9.5),
-                );
-            });
-        if badge_resp.response.interact(egui::Sense::click()).clicked() {
-            action = Some(HeaderAction::OpenProjectsModal);
-        }
-
+        // Active Workspace & Git Branch Pill (Click to manage projects)
         if ui
             .add(
                 egui::Button::new(
-                    egui::RichText::new(project_name)
-                        .color(theme.text_silver)
-                        .size(11.5),
+                    egui::RichText::new(format!(
+                        "{} {}  ·  {} {}",
+                        Lucide::FOLDER,
+                        project_name,
+                        Lucide::GIT_BRANCH,
+                        branch_name
+                    ))
+                    .color(theme.text_paper)
+                    .strong()
+                    .size(11.5),
                 )
-                .fill(Color32::TRANSPARENT),
+                .fill(theme.surface_1)
+                .stroke(Stroke::new(1.0, theme.border))
+                .rounding(Rounding::same(6.0)),
             )
-            .on_hover_text("Click để chuyển Project / Workspace")
+            .on_hover_text("Project & Nhánh Git đang mở (Click để quản lý danh sách Project)")
             .clicked()
         {
             action = Some(HeaderAction::OpenProjectsModal);
         }
 
-        ui.label(egui::RichText::new("/").color(theme.text_silver).size(11.5));
-        ui.label(
-            egui::RichText::new(format!("{} {}", Lucide::GIT_BRANCH, branch_name))
-                .color(theme.accent_pop)
-                .size(11.0),
-        );
-        ui.label(egui::RichText::new("/").color(theme.text_silver).size(11.5));
-        ui.label(
-            egui::RichText::new(active_thread_title)
-                .color(theme.text_paper)
-                .strong()
-                .size(12.0),
-        );
+        ui.add_space(12.0);
 
-        // Right side: 100% Icon-First Top Window Controls
+        // 2. Center: Agy Segmented View Switcher (Clear Icon + Label Tabs)
+        Frame::none()
+            .fill(theme.bg_ink)
+            .rounding(Rounding::same(7.0))
+            .stroke(Stroke::new(1.0, theme.border))
+            .inner_margin(Margin::symmetric(3.0, 2.0))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let kanban_lbl = if running_bg_count > 0 {
+                        format!("{} Kanban ({})", Lucide::KANBAN, running_bg_count)
+                    } else {
+                        format!("{} Kanban", Lucide::KANBAN)
+                    };
+
+                    let tabs = [
+                        (
+                            CenterViewMode::ChatTimeline,
+                            format!("{} Chat", Lucide::MESSAGE_SQUARE),
+                            "Khung hội thoại AI & Điều phối (Chat Timeline)",
+                        ),
+                        (
+                            CenterViewMode::KanbanBoard,
+                            kanban_lbl,
+                            "Bảng điều phối tác vụ 4 cột (Swarm Kanban · ⌘K)",
+                        ),
+                        (
+                            CenterViewMode::SplitChatKanban,
+                            format!("{} Song song", Lucide::COLUMNS),
+                            "Chế độ chia đôi màn hình: Vừa Chat vừa xem Kanban",
+                        ),
+                        (
+                            CenterViewMode::GitDiffModal,
+                            format!("{} Code & Diff", Lucide::CODE),
+                            "Xem Git Diff & Sửa file trực tiếp",
+                        ),
+                        (
+                            CenterViewMode::AgentSkillStudio,
+                            format!("{} Skills & Agents", Lucide::SPARKLES),
+                            "Quản lý, chỉnh sửa & nạp Skills / Subagents từ GitHub",
+                        ),
+                    ];
+
+                    for (mode, label, tip) in tabs {
+                        let is_active = layout.center_mode == mode;
+                        let btn = egui::Button::new(
+                            egui::RichText::new(label)
+                                .color(if is_active {
+                                    theme.on_accent
+                                } else {
+                                    theme.text_silver
+                                })
+                                .strong()
+                                .size(11.2),
+                        )
+                        .fill(if is_active {
+                            theme.accent_pop
+                        } else {
+                            Color32::TRANSPARENT
+                        })
+                        .rounding(Rounding::same(5.0));
+
+                        if ui.add(btn).on_hover_text(tip).clicked() {
+                            action = Some(HeaderAction::SetCenterMode(mode));
+                        }
+                    }
+                });
+            });
+
+        // 3. Right side: Clean Utility Controls
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            // 1. Right Dock Toggle (Lucide::PANEL_RIGHT)
+            // Right Dock Toggle (Lucide::PANEL_RIGHT)
             if icon_btn(
                 ui,
                 Lucide::PANEL_RIGHT,
                 if layout.show_right_dock {
-                    theme.accent_pop
+                    theme.text_paper
                 } else {
                     theme.text_silver
                 },
-                Color32::TRANSPARENT,
-                "Đóng/mở BeeBox Git & Emulator Dock (⌘E)",
+                if layout.show_right_dock {
+                    theme.surface_2
+                } else {
+                    Color32::TRANSPARENT
+                },
+                "Đóng/mở Thanh công cụ Git & Inspector bên phải (⌘E)",
             )
             .clicked()
             {
                 action = Some(HeaderAction::ToggleRightDock);
             }
 
-            // 2. Split View (Lucide::COLUMNS)
-            let split_active = layout.center_mode == CenterViewMode::SplitChatKanban;
+            // Settings Button
+            let settings_active = layout.center_mode == CenterViewMode::SettingsModal;
             if icon_btn(
                 ui,
-                Lucide::COLUMNS,
-                if split_active {
+                Lucide::SETTINGS,
+                if settings_active {
                     theme.accent_pop
                 } else {
                     theme.text_silver
                 },
-                Color32::TRANSPARENT,
-                "Chia đôi màn hình Chat & Swarm Kanban",
-            )
-            .clicked()
-            {
-                let next_mode = if split_active {
-                    CenterViewMode::ChatTimeline
+                if settings_active {
+                    theme.surface_2
                 } else {
-                    CenterViewMode::SplitChatKanban
-                };
-                action = Some(HeaderAction::SetCenterMode(next_mode));
-            }
-
-            // 3. Kanban View Toggle (Lucide::KANBAN)
-            let kanban_active = layout.center_mode == CenterViewMode::KanbanBoard;
-            let kanban_label = if running_bg_count > 0 {
-                format!("{}{}", Lucide::KANBAN, running_bg_count)
-            } else {
-                Lucide::KANBAN.to_string()
-            };
-            if icon_btn(
-                ui,
-                &kanban_label,
-                if kanban_active || running_bg_count > 0 {
-                    theme.accent_pop
-                } else {
-                    theme.text_silver
+                    Color32::TRANSPARENT
                 },
-                Color32::TRANSPARENT,
-                "Bảng điều phối Swarm Kanban Board (⌘K)",
+                "Cài đặt hệ thống & Giao diện",
             )
             .clicked()
             {
-                let next_mode = if kanban_active {
+                let next = if settings_active {
                     CenterViewMode::ChatTimeline
                 } else {
-                    CenterViewMode::KanbanBoard
+                    CenterViewMode::SettingsModal
                 };
-                action = Some(HeaderAction::SetCenterMode(next_mode));
+                action = Some(HeaderAction::SetCenterMode(next));
             }
 
-            // 4. Code & Diff Editor Toggle (Lucide::CODE)
-            let diff_active = layout.center_mode == CenterViewMode::GitDiffModal;
-            if icon_btn(
-                ui,
-                Lucide::CODE,
-                if diff_active {
-                    theme.accent_pop
-                } else {
-                    theme.text_silver
-                },
-                Color32::TRANSPARENT,
-                "Trình sửa code trực tiếp & xem Git Diff",
-            )
-            .clicked()
-            {
-                let next_mode = if diff_active {
-                    CenterViewMode::ChatTimeline
-                } else {
-                    CenterViewMode::GitDiffModal
-                };
-                action = Some(HeaderAction::SetCenterMode(next_mode));
-            }
-
-            // 5. Light / Dark Mode 1-Click Toggle (Lucide::SUN / Lucide::MOON)
-            let theme_icon = if theme.is_dark {
-                Lucide::SUN
+            // Light / Dark Mode 1-Click Toggle Pill
+            let (theme_icon, theme_lbl) = if theme.is_dark {
+                (Lucide::SUN, "Sáng")
             } else {
-                Lucide::MOON
+                (Lucide::MOON, "Tối")
             };
-            let theme_tip = if theme.is_dark {
-                "Chuyển sang giao diện Sáng (Light Mode · ⌘L)"
-            } else {
-                "Chuyển sang giao diện Tối (OLED Dark Mode · ⌘L)"
-            };
-            if icon_btn(
-                ui,
-                theme_icon,
-                theme.accent_pop,
-                theme.chip_bg,
-                theme_tip,
-            )
-            .clicked()
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(format!("{} {}", theme_icon, theme_lbl))
+                            .color(theme.text_paper)
+                            .size(11.0),
+                    )
+                    .fill(theme.surface_1)
+                    .stroke(Stroke::new(1.0, theme.border))
+                    .rounding(Rounding::same(6.0)),
+                )
+                .on_hover_text("Đổi chế độ Sáng Ấm / Tối Ấm (⌘L)")
+                .clicked()
             {
                 action = Some(HeaderAction::ToggleLightDark);
             }
 
-            // 6. Elegans Security & AST Blast Audit (Lucide::SHIELD)
-            if icon_btn(
-                ui,
-                Lucide::SHIELD,
-                theme.text_silver,
-                Color32::TRANSPARENT,
-                "Quét bảo mật Elegans (Env Secret Guard & AST Blast Radius)",
-            )
-            .clicked()
-            {
-                action = Some(HeaderAction::RunSecurityDiagnostics);
-            }
-
-            // 7. Refresh Git Status (Lucide::REFRESH)
+            // Refresh Git Status (Lucide::REFRESH)
             if icon_btn(
                 ui,
                 Lucide::REFRESH,
@@ -270,19 +266,6 @@ pub fn render_transparent_header(
             .clicked()
             {
                 action = Some(HeaderAction::RefreshWorkspace);
-            }
-
-            // 8. Browser Profile Launcher (Lucide::GLOBE)
-            if icon_btn(
-                ui,
-                Lucide::GLOBE,
-                theme.text_silver,
-                Color32::TRANSPARENT,
-                "Mở GitLab MR / Trình duyệt cách ly (Bảo vệ Dad Profile)",
-            )
-            .clicked()
-            {
-                action = Some(HeaderAction::LaunchGitLabBrowser);
             }
         });
     });

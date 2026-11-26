@@ -7,7 +7,7 @@ pub mod scheduler;
 
 pub use agy_bridge::{AgentStreamEvent, AgyBridge};
 pub use avatar::{AgentAvatarState, AvatarManager};
-pub use chat_session::{ChatSessionManager, ChatThread, MessageRole, QuotedContext, ThreadAgentMode};
+pub use chat_session::{ChatSessionManager, MessageRole, QuotedContext, ThreadAgentMode};
 pub use elegans_agents::{ElegansAgent, ALL_AGENTS};
 pub use kanban::{AgentKanbanManager, AgentTaskCard, KanbanColumn};
 pub use scheduler::{ExecutionMode, MemoryReaper};
