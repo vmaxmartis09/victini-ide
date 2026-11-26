@@ -1,6 +1,7 @@
+use crate::theme::Lucide;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ElegansAgent {
     DesignScout,
     UiUxCritic,
@@ -24,12 +25,12 @@ impl ElegansAgent {
 
     pub fn icon(&self) -> &'static str {
         match self {
-            Self::DesignScout => "🔭",
-            Self::UiUxCritic => "🎨",
-            Self::SeniorDev => "⚡",
-            Self::CodeAuditor => "🛡️",
-            Self::QaTester => "📱",
-            Self::DevopsDeployer => "🚀",
+            Self::DesignScout => Lucide::EYE,
+            Self::UiUxCritic => Lucide::LAYERS,
+            Self::SeniorDev => Lucide::CODE,
+            Self::CodeAuditor => Lucide::SLIDERS,
+            Self::QaTester => Lucide::SMARTPHONE,
+            Self::DevopsDeployer => Lucide::TERMINAL,
         }
     }
 

@@ -12,11 +12,14 @@ impl Lucide {
     pub const GIT_PR: &'static str = "\u{e0e5}"; // git-pull-request
     pub const TERMINAL: &'static str = "\u{e181}"; // terminal
     pub const ARROW_UP: &'static str = "\u{e04a}"; // arrow-up
+    pub const ARROW_LEFT: &'static str = "\u{e048}"; // arrow-left
+    pub const ARROW_RIGHT: &'static str = "\u{e049}"; // arrow-right
     pub const SMARTPHONE: &'static str = "\u{e163}"; // smartphone
     pub const BOT: &'static str = "\u{e1bb}"; // bot
     pub const TRASH: &'static str = "\u{e18e}"; // trash-2
     pub const MESSAGE_SQUARE: &'static str = "\u{e117}"; // message-square
     pub const FOLDER: &'static str = "\u{e0d7}"; // folder
+    pub const FOLDER_OPEN: &'static str = "\u{e247}"; // folder-open
     pub const PIN: &'static str = "\u{e259}"; // pin
     pub const PLUS: &'static str = "\u{e13d}"; // plus
     pub const PLAY: &'static str = "\u{e13c}"; // play
@@ -26,11 +29,17 @@ impl Lucide {
     pub const LAYOUT_GRID: &'static str = "\u{e0ff}"; // layout-grid
     pub const GLOBE: &'static str = "\u{e0e8}"; // globe
     pub const REFRESH: &'static str = "\u{e145}"; // refresh-cw
+    pub const ROTATE_CCW: &'static str = "\u{e148}"; // rotate-ccw
     pub const EYE: &'static str = "\u{e0ba}"; // eye
     pub const CHEVRON_RIGHT: &'static str = "\u{e06f}"; // chevron-right
+    pub const CHEVRON_LEFT: &'static str = "\u{e06e}"; // chevron-left
     pub const CHEVRON_DOWN: &'static str = "\u{e06d}"; // chevron-down
+    pub const CHEVRON_UP: &'static str = "\u{e070}"; // chevron-up
     pub const CHECK: &'static str = "\u{e06c}"; // check
+    pub const CIRCLE_CHECK: &'static str = "\u{e226}"; // circle-check
+    pub const CIRCLE_X: &'static str = "\u{e084}"; // circle-x
     pub const COPY: &'static str = "\u{e09e}"; // copy
+    pub const COPY_PLUS: &'static str = "\u{e3fd}"; // copy-plus
     pub const QUOTE: &'static str = "\u{e239}"; // quote
     pub const COLUMNS: &'static str = "\u{e098}"; // columns
     pub const PANEL_LEFT: &'static str = "\u{e12a}"; // panel-left
@@ -38,6 +47,7 @@ impl Lucide {
     pub const SPARKLES: &'static str = "\u{e412}"; // sparkles
     pub const BOX: &'static str = "\u{e061}"; // box
     pub const CODE: &'static str = "\u{e093}"; // code
+    pub const FILE_CODE: &'static str = "\u{e0c3}"; // file-code
     pub const SAVE: &'static str = "\u{e14d}"; // save
     pub const X: &'static str = "\u{e1b2}"; // x
     pub const CLOCK: &'static str = "\u{e087}"; // clock
@@ -45,4 +55,15 @@ impl Lucide {
     pub const DATABASE: &'static str = "\u{e0ad}"; // database
     pub const MIC: &'static str = "\u{e118}"; // mic
     pub const FILE_TEXT: &'static str = "\u{e0cc}"; // file-text
+    pub const DOWNLOAD: &'static str = "\u{e0b2}"; // download
+    pub const PENCIL: &'static str = "\u{e1f9}"; // pencil
+    pub const ALERT_TRIANGLE: &'static str = "\u{e193}"; // triangle-alert
+    pub const SHIELD_ALERT: &'static str = "\u{e1fe}"; // shield-alert
+    pub const ELLIPSIS: &'static str = "\u{e0b6}"; // ellipsis
+    pub const UNDO: &'static str = "\u{e2a1}"; // undo-2
+    pub const FILTER: &'static str = "\u{e0dc}"; // filter
+    pub const GRIP_VERTICAL: &'static str = "\u{e0eb}"; // grip-vertical
+    pub const LOCK: &'static str = "\u{e10b}"; // lock
+    pub const UNLOCK: &'static str = "\u{e10c}"; // unlock
+    pub const EXTERNAL_LINK: &'static str = "\u{e0b9}"; // external-link
 }

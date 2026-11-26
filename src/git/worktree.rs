@@ -243,9 +243,26 @@ impl GitManager {
 
     pub fn discard_file(&self, rel_path: &str) -> Result<()> {
         let repo = Repository::discover(&self.repo_path).context("Not a git repository")?;
-        let mut checkout = CheckoutBuilder::new();
-        checkout.force().path(rel_path);
-        repo.checkout_head(Some(&mut checkout))?;
+        let workdir = repo.workdir().unwrap_or(&self.repo_path);
+        let in_head = repo
+            .head()
+            .ok()
+            .and_then(|h| h.peel_to_tree().ok())
+            .and_then(|t| t.get_path(Path::new(rel_path)).ok())
+            .is_some();
+
+        if in_head {
+            let mut checkout = CheckoutBuilder::new();
+            checkout.force().path(rel_path);
+            repo.checkout_head(Some(&mut checkout))?;
+        } else {
+            let target = workdir.join(rel_path);
+            if target.is_file() {
+                fs::remove_file(&target)?;
+            } else if target.is_dir() {
+                fs::remove_dir_all(&target)?;
+            }
+        }
         Ok(())
     }
 
@@ -255,6 +272,237 @@ impl GitManager {
         index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
         index.write()?;
         Ok(())
+    }
+
+    pub fn unstage_all(&self) -> Result<()> {
+        let repo = Repository::discover(&self.repo_path).context("Not a git repository")?;
+        if let Ok(head) = repo.head() {
+            if let Some(target) = head.target() {
+                if let Ok(obj) = repo.find_object(target, None) {
+                    repo.reset(&obj, git2::ResetType::Mixed, None)?;
+                    return Ok(());
+                }
+            }
+        }
+        let mut index = repo.index()?;
+        index.clear()?;
+        index.write()?;
+        Ok(())
+    }
+
+    pub fn read_file_content(&self, rel_path: &str) -> Result<String> {
+        let repo = Repository::discover(&self.repo_path).ok();
+        let workdir = repo
+            .as_ref()
+            .and_then(|r| r.workdir())
+            .unwrap_or(&self.repo_path);
+        let full_path = workdir.join(rel_path);
+        fs::read_to_string(&full_path)
+            .with_context(|| format!("Không thể đọc file {:?}", full_path))
+    }
+
+    pub fn write_file_content(&self, rel_path: &str, content: &str) -> Result<()> {
+        let repo = Repository::discover(&self.repo_path).ok();
+        let workdir = repo
+            .as_ref()
+            .and_then(|r| r.workdir())
+            .unwrap_or(&self.repo_path);
+        let full_path = workdir.join(rel_path);
+        if let Some(parent) = full_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&full_path, content)
+            .with_context(|| format!("Không thể lưu file {:?}", full_path))
+    }
+
+    pub fn list_workspace_files(&self, max_files: usize) -> Vec<String> {
+        let mut files = Vec::new();
+        if let Ok(repo) = Repository::discover(&self.repo_path) {
+            if let Ok(index) = repo.index() {
+                for entry in index.iter() {
+                    if let Ok(p) = std::str::from_utf8(&entry.path) {
+                        if !p.starts_with("target/") && !p.starts_with(".git/") {
+                            files.push(p.to_string());
+                            if files.len() >= max_files {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if files.is_empty() {
+            Self::walk_dir_files(&self.repo_path, &self.repo_path, &mut files, max_files);
+        }
+        files
+    }
+
+    fn walk_dir_files(root: &Path, dir: &Path, out: &mut Vec<String>, limit: usize) {
+        if out.len() >= limit {
+            return;
+        }
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if out.len() >= limit {
+                    break;
+                }
+                let p = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') || name == "target" || name == "node_modules" {
+                    continue;
+                }
+                if p.is_dir() {
+                    Self::walk_dir_files(root, &p, out, limit);
+                } else if let Ok(rel) = p.strip_prefix(root) {
+                    out.push(rel.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+    }
+
+    pub fn stash_save(&self, message: &str) -> Result<String> {
+        let msg = if message.trim().is_empty() {
+            "victini-wip-stash"
+        } else {
+            message.trim()
+        };
+        let output = Command::new("git")
+            .current_dir(&self.repo_path)
+            .args(["stash", "push", "-u", "-m", msg])
+            .output()
+            .context("Failed to execute git stash push")?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.success() {
+            Ok(format!("✓ Stashed working changes: {}", stdout.trim()))
+        } else {
+            anyhow::bail!("Git stash error: {} {}", stdout.trim(), stderr.trim())
+        }
+    }
+
+    pub fn stash_pop(&self) -> Result<String> {
+        let output = Command::new("git")
+            .current_dir(&self.repo_path)
+            .args(["stash", "pop"])
+            .output()
+            .context("Failed to execute git stash pop")?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.success() {
+            Ok(format!("✓ Popped stash: {}", stdout.trim()))
+        } else {
+            anyhow::bail!("Git stash pop error: {} {}", stdout.trim(), stderr.trim())
+        }
+    }
+
+    pub fn remove_worktree(&self, wt_path: &Path) -> Result<String> {
+        let output = Command::new("git")
+            .current_dir(&self.repo_path)
+            .args(["worktree", "remove", "--force", &wt_path.to_string_lossy()])
+            .output()
+            .context("Failed to remove worktree")?;
+        let _ = Command::new("git")
+            .current_dir(&self.repo_path)
+            .args(["worktree", "prune"])
+            .output();
+        if output.status.success() {
+            Ok(format!("✓ Đã xóa Worktree {:?}", wt_path))
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Không thể xóa Worktree: {}", stderr.trim())
+        }
+    }
+
+    pub fn open_in_external_editor(&self, rel_path: Option<&str>) -> Result<String> {
+        let target = match rel_path {
+            Some(p) if !p.is_empty() => self.repo_path.join(p),
+            _ => self.repo_path.clone(),
+        };
+        for cmd_name in ["cursor", "code", "zed"] {
+            if Command::new(cmd_name).arg(&target).spawn().is_ok() {
+                return Ok(format!("✓ Đã mở {:?} bằng {}", target, cmd_name));
+            }
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = Command::new("open").arg(&target).spawn();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = Command::new("explorer").arg(&target).spawn();
+        }
+        Ok(format!("✓ Đã mở {:?}", target))
+    }
+
+    pub fn generate_ai_commit_message(&self, changes: &[GitFileChange]) -> String {
+        if changes.is_empty() {
+            return "chore(workspace): clean sync".to_string();
+        }
+        let staged: Vec<&GitFileChange> = changes.iter().filter(|c| c.is_staged).collect();
+        let active_set: Vec<&GitFileChange> = if !staged.is_empty() {
+            staged
+        } else {
+            changes.iter().collect()
+        };
+
+        let mut total_add = 0;
+        let mut total_rem = 0;
+        let mut scopes = Vec::new();
+        let mut file_names = Vec::new();
+        let mut has_new = false;
+        let mut has_del = false;
+
+        for c in &active_set {
+            total_add += c.added_lines;
+            total_rem += c.removed_lines;
+            if c.status == "A" || c.status == "?" {
+                has_new = true;
+            } else if c.status == "D" {
+                has_del = true;
+            }
+            let parts: Vec<&str> = c.path.split('/').collect();
+            if parts.len() >= 2 {
+                let scope = parts[parts.len() - 2];
+                if !scopes.contains(&scope) && scope != "src" {
+                    scopes.push(scope);
+                }
+            }
+            if let Some(fname) = parts.last() {
+                if file_names.len() < 3 {
+                    file_names.push(*fname);
+                }
+            }
+        }
+
+        let prefix = if has_new && !has_del {
+            "feat"
+        } else if has_del && active_set.len() == 1 {
+            "chore"
+        } else {
+            "fix"
+        };
+
+        let scope_str = if scopes.is_empty() {
+            self.get_branch_name()
+        } else {
+            scopes.into_iter().take(2).collect::<Vec<_>>().join(",")
+        };
+
+        let more = if active_set.len() > 3 {
+            format!(" (+{} files)", active_set.len() - 3)
+        } else {
+            String::new()
+        };
+
+        format!(
+            "{}({}): update {}{} (+{} -{})",
+            prefix,
+            scope_str,
+            file_names.join(", "),
+            more,
+            total_add,
+            total_rem
+        )
     }
 
     pub fn commit(&self, message: &str) -> Result<String> {

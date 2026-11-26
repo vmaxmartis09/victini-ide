@@ -11,7 +11,8 @@ mod ui;
 
 use ai::{
     AgentAvatarState, AgentKanbanManager, AgentStreamEvent, AgyBridge, ChatSessionManager,
-    ElegansAgent, ExecutionMode, KanbanColumn, MemoryReaper,
+    ElegansAgent, ExecutionMode, KanbanColumn, MemoryReaper, QuotedContext, ThreadAgentMode,
+    ALL_AGENTS,
 };
 use browser_gitlab::BrowserProfileManager;
 use chrono::Timelike;
@@ -25,8 +26,9 @@ use std::sync::{mpsc as std_mpsc, Arc};
 use theme::{CanhTheme, SharedTicker};
 use tokio::sync::mpsc;
 use ui::{
-    BeeBoxAction, CenterViewMode, ChatUiAction, HeaderAction, KanbanAction, KanbanComposerState,
-    LayoutState, SidebarAction, StudioEditorState, StudioModalAction,
+    BeeBoxAction, BeeBoxUiState, CenterViewMode, ChatComposerUiState, ChatUiAction, HeaderAction,
+    KanbanAction, KanbanComposerState, LayoutState, SidebarAction, StudioEditorState,
+    StudioModalAction,
 };
 
 struct VictiniApp {
@@ -42,6 +44,8 @@ struct VictiniApp {
     kanban_composer: KanbanComposerState,
     chat_mgr: ChatSessionManager,
     studio_editor: StudioEditorState,
+    beebox_ui: BeeBoxUiState,
+    chat_composer_ui: ChatComposerUiState,
 
     // Workspace & Git state
     branch_name: String,
@@ -49,17 +53,16 @@ struct VictiniApp {
     branches: Vec<String>,
     worktrees: Vec<WorktreeInfo>,
     file_changes: Vec<GitFileChange>,
+    workspace_files: Vec<String>,
     active_diff: Option<DiffHunk>,
     discovered_skills: Vec<DiscoveredSkill>,
     discovered_agents: Vec<DiscoveredAgent>,
 
     // Sidebar & Composer inputs
+    sidebar_show_agents_tab: bool,
     sidebar_search: String,
-    new_branch_input: String,
     commit_message: String,
     input_prompt: String,
-    show_mention_popup: bool,
-    show_skill_popup: bool,
 
     // AI Streaming state
     active_agent: ElegansAgent,
@@ -78,7 +81,7 @@ impl VictiniApp {
         Self::apply_theme_visuals(&cc.egui_ctx, &theme);
 
         let root = config::paths::detect_workspace_root();
-        let project_mgr = ProjectManager::load_or_init(root.clone());
+        let project_mgr = ProjectManager::load_or_init(root);
         let active_root = project_mgr.active_project.clone();
 
         let git_manager = GitManager::new(active_root.clone());
@@ -87,6 +90,7 @@ impl VictiniApp {
         let branches = git_manager.list_branches();
         let worktrees = git_manager.list_worktrees();
         let file_changes = git_manager.get_status();
+        let workspace_files = git_manager.list_workspace_files(250);
         let (discovered_skills, discovered_agents) = SkillDiscovery::scan_workspace(&active_root);
 
         let profile_manager = BrowserProfileManager::new(9222);
@@ -94,6 +98,17 @@ impl VictiniApp {
         let reaper = MemoryReaper::new(30);
         let kanban = AgentKanbanManager::load_for_project(&active_root);
         let chat_mgr = ChatSessionManager::load_for_project(&active_root, &branch_name);
+
+        let mut studio_editor = StudioEditorState::default();
+        let active_diff = if let Some(first_change) = file_changes.first() {
+            studio_editor.active_file_path = first_change.path.clone();
+            studio_editor.file_editor_buffer = git_manager
+                .read_file_content(&first_change.path)
+                .unwrap_or_default();
+            git_manager.compute_file_diff(&first_change.path).ok()
+        } else {
+            None
+        };
 
         Self {
             theme,
@@ -107,21 +122,22 @@ impl VictiniApp {
             kanban,
             kanban_composer: KanbanComposerState::default(),
             chat_mgr,
-            studio_editor: StudioEditorState::default(),
+            studio_editor,
+            beebox_ui: BeeBoxUiState::default(),
+            chat_composer_ui: ChatComposerUiState::default(),
             branch_name,
             head_commit,
             branches,
             worktrees,
             file_changes,
-            active_diff: None,
+            workspace_files,
+            active_diff,
             discovered_skills,
             discovered_agents,
+            sidebar_show_agents_tab: false,
             sidebar_search: String::new(),
-            new_branch_input: String::new(),
             commit_message: String::new(),
             input_prompt: String::new(),
-            show_mention_popup: false,
-            show_skill_popup: false,
             active_agent: ElegansAgent::SeniorDev,
             avatar_state: AgentAvatarState::Idle,
             exec_mode: ExecutionMode::Auto,
@@ -135,36 +151,32 @@ impl VictiniApp {
         visuals.dark_mode = true;
         visuals.panel_fill = theme.bg_field; // #0A0A0A
         visuals.window_fill = theme.panel_bg; // #111111
-        visuals.extreme_bg_color = Color32::from_rgb(0x12, 0x12, 0x12); // Lock text inputs to dark #121212, never white!
+        visuals.extreme_bg_color = Color32::from_rgb(0x12, 0x12, 0x12); // Lock text inputs to dark #121212
         visuals.faint_bg_color = Color32::from_rgb(0x16, 0x16, 0x16);
-        
-        // Noninteractive & Text styling
+
         visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(0x11, 0x11, 0x11);
         visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, theme.border);
         visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
-        
-        // Inactive widgets (TextEdit background & Buttons)
-        visuals.widgets.inactive.bg_fill = Color32::from_rgb(0x12, 0x12, 0x12); // Dark inputs
+
+        visuals.widgets.inactive.bg_fill = Color32::from_rgb(0x12, 0x12, 0x12);
         visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, theme.border);
         visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
         visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
 
-        // Hovered widgets
         visuals.widgets.hovered.bg_fill = Color32::from_rgb(0x1A, 0x1A, 0x1A);
-        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, Color32::from_rgb(0x28, 0x28, 0x28));
+        visuals.widgets.hovered.bg_stroke =
+            egui::Stroke::new(1.0, Color32::from_rgb(0x28, 0x28, 0x28));
         visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, Color32::WHITE);
         visuals.widgets.hovered.rounding = egui::Rounding::same(6.0);
 
-        // Active / Pressed widgets
         visuals.widgets.active.bg_fill = Color32::from_rgb(0x22, 0x22, 0x22);
         visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, theme.accent_pop);
         visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, Color32::WHITE);
         visuals.widgets.active.rounding = egui::Rounding::same(6.0);
 
-        // Selection & focus
         visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(0xE2, 0x5B, 0x2D, 120);
         visuals.selection.stroke = egui::Stroke::new(1.0, theme.accent_pop);
-        
+
         ctx.set_visuals(visuals);
     }
 
@@ -176,10 +188,45 @@ impl VictiniApp {
         self.branches = self.git_manager.list_branches();
         self.worktrees = self.git_manager.list_worktrees();
         self.file_changes = self.git_manager.get_status();
+        self.workspace_files = self.git_manager.list_workspace_files(250);
         self.project_mgr.update_branch(&root, &self.branch_name);
         let (skills, agents) = SkillDiscovery::scan_workspace(&root);
         self.discovered_skills = skills;
         self.discovered_agents = agents;
+
+        if !self.studio_editor.active_file_path.is_empty() {
+            self.active_diff = self
+                .git_manager
+                .compute_file_diff(&self.studio_editor.active_file_path)
+                .ok();
+        }
+    }
+
+    fn open_file_in_editor(&mut self, rel_path: &str, edit_mode: bool) {
+        let target_path = if !rel_path.is_empty() {
+            rel_path.to_string()
+        } else if !self.studio_editor.active_file_path.is_empty() {
+            self.studio_editor.active_file_path.clone()
+        } else if let Some(first) = self.file_changes.first() {
+            first.path.clone()
+        } else if let Some(wf) = self.workspace_files.first() {
+            wf.clone()
+        } else {
+            String::new()
+        };
+
+        if !target_path.is_empty() {
+            self.studio_editor.active_file_path = target_path.clone();
+            self.studio_editor.file_editor_buffer = self
+                .git_manager
+                .read_file_content(&target_path)
+                .unwrap_or_default();
+            self.studio_editor.file_editor_dirty = false;
+            self.active_diff = self.git_manager.compute_file_diff(&target_path).ok();
+        }
+        self.studio_editor.diff_edit_mode = edit_mode;
+        self.studio_editor.status_notice = None;
+        self.layout.center_mode = CenterViewMode::GitDiffModal;
     }
 
     fn switch_to_project(&mut self, new_root: PathBuf) {
@@ -191,49 +238,203 @@ impl VictiniApp {
         self.layout.center_mode = CenterViewMode::ChatTimeline;
     }
 
+    fn handle_slash_command(&mut self, cmd: &str) -> bool {
+        let trimmed = cmd.trim();
+        if trimmed == "/clear" {
+            self.chat_mgr.create_default_thread(&self.branch_name);
+            self.chat_mgr.save(&self.project_mgr.active_project);
+            return true;
+        } else if trimmed == "/kanban" {
+            self.layout.center_mode = CenterViewMode::KanbanBoard;
+            return true;
+        } else if trimmed == "/editor" {
+            self.open_file_in_editor("", true);
+            return true;
+        } else if trimmed == "/commit" {
+            let msg = if self.commit_message.trim().is_empty() {
+                self.git_manager
+                    .generate_ai_commit_message(&self.file_changes)
+            } else {
+                self.commit_message.trim().to_string()
+            };
+            let _ = self.git_manager.stage_all();
+            match self.git_manager.commit(&msg) {
+                Ok(oid) => {
+                    self.chat_mgr.push_system_notice(format!(
+                        "✓ Đã commit '{}' ({})",
+                        msg,
+                        &oid[..7.min(oid.len())]
+                    ));
+                    self.commit_message.clear();
+                }
+                Err(e) => self
+                    .chat_mgr
+                    .push_system_notice(format!("Commit lỗi: {}", e)),
+            }
+            self.refresh_workspace();
+            return true;
+        } else if trimmed == "/diff" {
+            let mut summary = String::new();
+            for fc in self.file_changes.iter().take(6) {
+                if let Ok(hunk) = self.git_manager.compute_file_diff(&fc.path) {
+                    let lines: String = hunk
+                        .lines
+                        .iter()
+                        .filter(|l| l.tag != ' ')
+                        .take(15)
+                        .map(|l| format!("{} {}", l.tag, l.content))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    summary.push_str(&format!(
+                        "File {} (+{} -{}):\n{}\n\n",
+                        fc.path, fc.added_lines, fc.removed_lines, lines
+                    ));
+                }
+            }
+            if summary.is_empty() {
+                self.chat_mgr
+                    .push_system_notice("Working tree hiện tại không có thay đổi nào.");
+                return true;
+            }
+            self.chat_mgr.active_quote = Some(QuotedContext {
+                source_msg_id: "git-diff-all".to_string(),
+                author_label: "Workspace Git Diff".to_string(),
+                snippet: summary,
+                is_quote_block: true,
+            });
+            self.input_prompt =
+                "Hãy review chi tiết các thay đổi trong Git Diff này và chỉ ra các điểm cần tối ưu."
+                    .to_string();
+            return false; // Fall through to dispatch_chat_prompt!
+        } else if trimmed == "/review" {
+            self.chat_mgr
+                .open_or_create_dedicated_core_thread(ElegansAgent::CodeAuditor, &self.branch_name);
+            self.active_agent = ElegansAgent::CodeAuditor;
+            self.chat_mgr.save(&self.project_mgr.active_project);
+            return true;
+        } else if let Some(rest) = trimmed.strip_prefix("/agent ") {
+            let target = rest.trim().to_lowercase();
+            for &ag in ALL_AGENTS {
+                if ag.name().to_lowercase().contains(&target) {
+                    self.chat_mgr
+                        .open_or_create_dedicated_core_thread(ag, &self.branch_name);
+                    self.active_agent = ag;
+                    self.chat_mgr.save(&self.project_mgr.active_project);
+                    return true;
+                }
+            }
+            if let Some(ca) = self
+                .discovered_agents
+                .iter()
+                .find(|a| a.name.to_lowercase().contains(&target))
+            {
+                self.chat_mgr.open_or_create_dedicated_custom_thread(
+                    &ca.name,
+                    &ca.role,
+                    &ca.content,
+                    &self.branch_name,
+                );
+                self.chat_mgr.save(&self.project_mgr.active_project);
+                return true;
+            }
+        }
+        false
+    }
+
     fn dispatch_chat_prompt(&mut self) {
         let raw = self.input_prompt.trim().to_string();
         if raw.is_empty() {
             return;
         }
         self.input_prompt.clear();
-        self.show_mention_popup = false;
-        self.show_skill_popup = false;
+        self.chat_composer_ui.show_context_popup = false;
+        self.chat_composer_ui.show_agent_popup = false;
 
-        // Handle built-in slash commands cleanly
-        if raw == "/clear" {
-            self.chat_mgr.create_default_thread(&self.branch_name);
-            self.chat_mgr.save(&self.project_mgr.active_project);
-            return;
-        } else if raw == "/kanban" {
-            self.layout.center_mode = CenterViewMode::KanbanBoard;
-            return;
-        } else if raw == "/commit" {
-            let _ = self.git_manager.stage_all();
-            match self
-                .git_manager
-                .commit("feat(victini): autonomous slash commit")
-            {
-                Ok(oid) => self
-                    .chat_mgr
-                    .push_system_notice(format!("✓ Đã commit thành công ({})", &oid[..7.min(oid.len())])),
-                Err(e) => self
-                    .chat_mgr
-                    .push_system_notice(format!("⚠️ Commit lỗi: {}", e)),
-            }
-            self.refresh_workspace();
+        if self.handle_slash_command(&raw) {
             return;
         }
+        let prompt_to_send = if self.input_prompt.is_empty() {
+            raw
+        } else {
+            let p = self.input_prompt.clone();
+            self.input_prompt.clear();
+            p
+        };
 
-        let detected_agent = AgyBridge::detect_agent_for_prompt(&raw, self.active_agent);
-        self.active_agent = detected_agent;
-        let (_user_msg_id, quoted) = self.chat_mgr.add_user_message(&raw, detected_agent);
+        // Parse any inline @file or $skill tokens typed directly in the prompt
+        for token in prompt_to_send.split_whitespace() {
+            if let Some(f_tok) = token.strip_prefix('@') {
+                if self.workspace_files.iter().any(|wf| wf == f_tok)
+                    || self.file_changes.iter().any(|fc| fc.path == f_tok)
+                {
+                    if !self
+                        .chat_mgr
+                        .active_thread()
+                        .attached_files
+                        .contains(&f_tok.to_string())
+                    {
+                        self.chat_mgr.toggle_attached_file(f_tok.to_string());
+                    }
+                }
+            } else if let Some(s_tok) = token.strip_prefix('$') {
+                if self.discovered_skills.iter().any(|sk| sk.name == s_tok) {
+                    if !self
+                        .chat_mgr
+                        .active_thread()
+                        .attached_skills
+                        .contains(&s_tok.to_string())
+                    {
+                        self.chat_mgr.toggle_attached_skill(s_tok.to_string());
+                    }
+                }
+            }
+        }
+
+        let agent_mode = self.chat_mgr.active_thread().agent_mode.clone();
+        let resolved_agent = match &agent_mode {
+            ThreadAgentMode::SwarmAuto => {
+                AgyBridge::detect_agent_for_prompt(&prompt_to_send, self.active_agent)
+            }
+            ThreadAgentMode::DedicatedCore(ag) => *ag,
+            ThreadAgentMode::DedicatedCustom { .. } => ElegansAgent::SeniorDev,
+        };
+        self.active_agent = resolved_agent;
+
+        // Gather real payloads for attached @files and $skills
+        let attached_files_list = self.chat_mgr.active_thread().attached_files.clone();
+        let attached_skills_list = self.chat_mgr.active_thread().attached_skills.clone();
+
+        let mut file_payloads = Vec::new();
+        for f_path in &attached_files_list {
+            if let Ok(content) = self.git_manager.read_file_content(f_path) {
+                file_payloads.push((f_path.clone(), content));
+            }
+        }
+
+        let mut skill_payloads = Vec::new();
+        for sk_name in &attached_skills_list {
+            if let Some(sk) = self.discovered_skills.iter().find(|s| &s.name == sk_name) {
+                skill_payloads.push((sk.name.clone(), sk.content.clone()));
+            }
+        }
+
+        let (_user_msg_id, quoted) = self
+            .chat_mgr
+            .add_user_message(&prompt_to_send, resolved_agent);
         let assistant_msg_id = self
             .chat_mgr
-            .begin_assistant_stream(detected_agent, quoted.clone());
+            .begin_assistant_stream(resolved_agent, quoted.clone());
         self.chat_mgr.save(&self.project_mgr.active_project);
 
-        let full_prompt = AgyBridge::build_contextual_prompt(&raw, &quoted, detected_agent);
+        let full_prompt = AgyBridge::build_contextual_prompt(
+            &prompt_to_send,
+            &quoted,
+            &agent_mode,
+            resolved_agent,
+            self.exec_mode,
+            &file_payloads,
+            &skill_payloads,
+        );
         self.avatar_state = AgentAvatarState::Thinking;
         self.cancel_flag = Arc::new(AtomicBool::new(false));
 
@@ -250,7 +451,7 @@ impl VictiniApp {
         AgyBridge::spawn_vibe_session(
             assistant_msg_id,
             full_prompt,
-            detected_agent,
+            resolved_agent,
             self.project_mgr.active_project.clone(),
             self.cancel_flag.clone(),
             tokio_tx,
@@ -301,7 +502,6 @@ impl eframe::App for VictiniApp {
                 self.emu_state.clear_memory_cache();
             }
 
-            // If Auto-Run Backlog on Idle is enabled, wake 1 backlog task in background
             if self.kanban.auto_run_backlog_on_idle && !self.kanban.any_background_running() {
                 if let Some(next_id) = self
                     .kanban
@@ -311,7 +511,7 @@ impl eframe::App for VictiniApp {
                     .map(|t| t.id.clone())
                 {
                     let root = self.project_mgr.active_project.clone();
-                    self.kanban.spawn_background_agent(&next_id, root);
+                    self.kanban.spawn_background_agent(&next_id, root, None);
                 }
             }
         }
@@ -344,7 +544,8 @@ impl eframe::App for VictiniApp {
                     elapsed_secs,
                 } => {
                     self.avatar_state = AgentAvatarState::Answering;
-                    self.chat_mgr.append_stream_line(&msg_id, &text, elapsed_secs);
+                    self.chat_mgr
+                        .append_stream_line(&msg_id, &text, elapsed_secs);
                 }
                 AgentStreamEvent::Finished {
                     msg_id,
@@ -358,6 +559,9 @@ impl eframe::App for VictiniApp {
             }
         }
 
+        let is_streaming = self.avatar_state == AgentAvatarState::Thinking
+            || self.avatar_state == AgentAvatarState::Answering;
+
         if need_repaint || self.ticker.should_repaint() || self.kanban.any_background_running() {
             ctx.request_repaint();
         }
@@ -370,6 +574,7 @@ impl eframe::App for VictiniApp {
             .filter(|t| t.is_running_bg)
             .count();
         let proj_name = self.project_mgr.active_project_name();
+        let active_thread_title = self.chat_mgr.active_thread().title.clone();
         let mut header_action = None;
 
         egui::TopBottomPanel::top("victini_top_header")
@@ -384,7 +589,7 @@ impl eframe::App for VictiniApp {
                     &self.theme,
                     &proj_name,
                     &self.branch_name,
-                    self.active_agent.title(),
+                    &active_thread_title,
                     running_bg_count,
                     &self.layout,
                     breakpoint,
@@ -408,7 +613,11 @@ impl eframe::App for VictiniApp {
                     self.layout.show_right_dock = !self.layout.show_right_dock;
                 }
                 HeaderAction::SetCenterMode(m) => {
-                    self.layout.center_mode = m;
+                    if m == CenterViewMode::GitDiffModal {
+                        self.open_file_in_editor("", false);
+                    } else {
+                        self.layout.center_mode = m;
+                    }
                 }
                 HeaderAction::OpenProjectsModal => {
                     self.layout.center_mode = CenterViewMode::ProjectsModal;
@@ -432,7 +641,7 @@ impl eframe::App for VictiniApp {
             }
         }
 
-        // 6. LEFT SIDEBAR (Resizable or Mini-Icon Rail with Smooth Physics Width)
+        // 6. LEFT SIDEBAR (Threads & 1-on-1 Dedicated Agents Launcher)
         if self.layout.show_left_sidebar {
             let target_w = if self.layout.left_mini_mode {
                 54.0
@@ -441,25 +650,16 @@ impl eframe::App for VictiniApp {
             };
             let anim_w = self.ticker.animate_float("left_sidebar_w", target_w, 0.28);
 
-            let thread_summaries: Vec<(usize, String, String)> = self
-                .chat_mgr
-                .threads
-                .iter()
-                .enumerate()
-                .map(|(i, t)| (i, t.title.clone(), t.updated_at.clone()))
-                .collect();
-
             let mut sidebar_action = None;
-            let mut panel = egui::SidePanel::left("victini_qoder_sidebar")
-                .frame(
-                    egui::Frame::none()
-                        .fill(egui::Color32::from_rgb(0x09, 0x0A, 0x0E))
-                        .inner_margin(egui::Margin::same(if self.layout.left_mini_mode {
-                            6.0
-                        } else {
-                            10.0
-                        })),
-                );
+            let mut panel = egui::SidePanel::left("victini_qoder_sidebar").frame(
+                egui::Frame::none()
+                    .fill(self.theme.bg_ink)
+                    .inner_margin(egui::Margin::same(if self.layout.left_mini_mode {
+                        6.0
+                    } else {
+                        10.0
+                    })),
+            );
 
             if self.layout.left_mini_mode {
                 panel = panel.resizable(false).exact_width(anim_w);
@@ -467,7 +667,7 @@ impl eframe::App for VictiniApp {
                 panel = panel
                     .resizable(true)
                     .default_width(anim_w)
-                    .width_range(190.0..=360.0);
+                    .width_range(200.0..=360.0);
             }
 
             panel.show(ctx, |ui| {
@@ -476,15 +676,15 @@ impl eframe::App for VictiniApp {
                     &self.theme,
                     self.layout.left_mini_mode,
                     self.layout.center_mode,
+                    &proj_name,
+                    &self.branch_name,
+                    is_streaming,
+                    &mut self.sidebar_show_agents_tab,
                     &mut self.sidebar_search,
-                    &self.worktrees,
-                    &self.branches,
-                    &mut self.new_branch_input,
                     &self.file_changes,
-                    &mut self.commit_message,
                     &self.discovered_skills,
                     &self.discovered_agents,
-                    &thread_summaries,
+                    &self.chat_mgr.threads,
                     self.chat_mgr.active_thread_idx,
                 );
             });
@@ -503,107 +703,54 @@ impl eframe::App for VictiniApp {
                     SidebarAction::SelectChatThread(idx) => {
                         if idx < self.chat_mgr.threads.len() {
                             self.chat_mgr.active_thread_idx = idx;
+                            self.active_agent = self
+                                .chat_mgr
+                                .active_thread()
+                                .agent_mode
+                                .resolve_core_agent(self.active_agent);
                             self.layout.center_mode = CenterViewMode::ChatTimeline;
                         }
                     }
-                    SidebarAction::SwitchCenterView(mode) => {
-                        self.layout.center_mode = mode;
-                    }
-                    SidebarAction::SelectWorktree(branch) => {
-                        let _ = self.git_manager.switch_branch(&branch);
-                        self.refresh_workspace();
-                    }
-                    SidebarAction::CreateNewBranch(b_name) => {
-                        if let Err(e) = self.git_manager.create_and_checkout_branch(&b_name) {
-                            self.chat_mgr
-                                .push_system_notice(format!("⚠️ Tạo nhánh lỗi: {}", e));
-                        } else {
-                            self.chat_mgr
-                                .push_system_notice(format!("✓ Đã tạo & chuyển sang nhánh '{}'", b_name));
+                    SidebarAction::DeleteChatThread(idx) => {
+                        if self.chat_mgr.threads.len() > 1 && idx < self.chat_mgr.threads.len() {
+                            self.chat_mgr.threads.remove(idx);
+                            if self.chat_mgr.active_thread_idx >= self.chat_mgr.threads.len() {
+                                self.chat_mgr.active_thread_idx =
+                                    self.chat_mgr.threads.len().saturating_sub(1);
+                            }
+                            self.chat_mgr.save(&project_root);
                         }
-                        self.new_branch_input.clear();
-                        self.refresh_workspace();
                     }
-                    SidebarAction::StageFile(p) => {
-                        let _ = self.git_manager.stage_file(&p);
-                        self.refresh_workspace();
+                    SidebarAction::OpenDedicatedCoreAgent(ag) => {
+                        self.chat_mgr
+                            .open_or_create_dedicated_core_thread(ag, &self.branch_name);
+                        self.active_agent = ag;
+                        self.chat_mgr.save(&project_root);
+                        self.layout.center_mode = CenterViewMode::ChatTimeline;
                     }
-                    SidebarAction::UnstageFile(p) => {
-                        let _ = self.git_manager.unstage_file(&p);
-                        self.refresh_workspace();
-                    }
-                    SidebarAction::DiscardFile(p) => {
-                        let _ = self.git_manager.discard_file(&p);
-                        self.refresh_workspace();
-                    }
-                    SidebarAction::StageAll => {
-                        let _ = self.git_manager.stage_all();
-                        self.refresh_workspace();
-                    }
-                    SidebarAction::ViewFileDiff(p) => {
-                        self.active_diff = self.git_manager.compute_file_diff(&p).ok();
-                        self.layout.center_mode = CenterViewMode::GitDiffModal;
-                    }
-                    SidebarAction::AiGenerateCommitMsg => {
-                        let changed_list: Vec<String> = self
-                            .file_changes
-                            .iter()
-                            .take(4)
-                            .map(|f| {
-                                f.path
-                                    .rsplit('/')
-                                    .next()
-                                    .unwrap_or(&f.path)
-                                    .to_string()
-                            })
-                            .collect();
-                        if changed_list.is_empty() {
-                            self.commit_message = "chore(victini): sync workspace".to_string();
-                        } else {
-                            self.commit_message = format!(
-                                "feat({}): update {}",
-                                self.branch_name,
-                                changed_list.join(", ")
+                    SidebarAction::OpenDedicatedCustomAgent(idx) => {
+                        if let Some(ca) = self.discovered_agents.get(idx) {
+                            self.chat_mgr.open_or_create_dedicated_custom_thread(
+                                &ca.name,
+                                &ca.role,
+                                &ca.content,
+                                &self.branch_name,
                             );
+                            self.chat_mgr.save(&project_root);
+                            self.layout.center_mode = CenterViewMode::ChatTimeline;
                         }
                     }
-                    SidebarAction::CommitWithMessage(msg) => {
-                        let _ = self.git_manager.stage_all();
-                        match self.git_manager.commit(&msg) {
-                            Ok(oid) => {
-                                self.chat_mgr.push_system_notice(format!(
-                                    "✓ Committed '{}' ({})",
-                                    msg,
-                                    &oid[..7.min(oid.len())]
-                                ));
-                                self.commit_message.clear();
-                            }
-                            Err(e) => {
-                                self.chat_mgr
-                                    .push_system_notice(format!("⚠️ Commit thất bại: {}", e));
-                            }
-                        }
-                        self.refresh_workspace();
+                    SidebarAction::SwitchToSwarmAuto => {
+                        self.chat_mgr.active_thread_mut().agent_mode = ThreadAgentMode::SwarmAuto;
+                        self.chat_mgr.save(&project_root);
+                        self.layout.center_mode = CenterViewMode::ChatTimeline;
                     }
-                    SidebarAction::GitPush => match self.git_manager.push_current_branch() {
-                        Ok(res) => self.chat_mgr.push_system_notice(res),
-                        Err(e) => self.chat_mgr.push_system_notice(format!("⚠️ {}", e)),
-                    },
-                    SidebarAction::GitPull => match self.git_manager.pull_rebase() {
-                        Ok(res) => {
-                            self.chat_mgr.push_system_notice(res);
-                            self.refresh_workspace();
+                    SidebarAction::SwitchCenterView(mode) => {
+                        if mode == CenterViewMode::GitDiffModal {
+                            self.open_file_in_editor("", false);
+                        } else {
+                            self.layout.center_mode = mode;
                         }
-                        Err(e) => self.chat_mgr.push_system_notice(format!("⚠️ {}", e)),
-                    },
-                    SidebarAction::CreateGitLabMr => {
-                        let _ = self.git_manager.push_current_branch();
-                        let mr_url = self.git_manager.get_gitlab_mr_url();
-                        let _ = self.profile_manager.launch_or_connect(Some(&mr_url));
-                        self.chat_mgr.push_system_notice(format!(
-                            "🦊 Đã mở trang tạo GitLab Merge Request: {}",
-                            mr_url
-                        ));
                     }
                     SidebarAction::OpenSkillStudioNewSkill => {
                         self.studio_editor.is_editing_agent = false;
@@ -635,16 +782,16 @@ impl eframe::App for VictiniApp {
             }
         }
 
-        // 7. RIGHT RAIL: T3 CODE BEEBOX & REMOTE EMULATOR DOCK (Resizable & Collapsible)
+        // 7. RIGHT RAIL: T3 CODE BEEBOX GIT INSPECTOR & REMOTE EMULATOR DOCK
         if self.layout.show_right_dock {
             let mut beebox_action = None;
             egui::SidePanel::right("victini_beebox_dock")
                 .resizable(true)
                 .default_width(self.layout.right_panel_width)
-                .width_range(220.0..=380.0)
+                .width_range(240.0..=400.0)
                 .frame(
                     egui::Frame::none()
-                        .fill(egui::Color32::from_rgb(0x0A, 0x0C, 0x11))
+                        .fill(self.theme.bg_field)
                         .inner_margin(egui::Margin::same(10.0)),
                 )
                 .show(ctx, |ui| {
@@ -655,7 +802,11 @@ impl eframe::App for VictiniApp {
                         &proj_name,
                         &self.branch_name,
                         &self.head_commit,
+                        &self.branches,
+                        &self.worktrees,
                         &self.file_changes,
+                        &mut self.commit_message,
+                        &mut self.beebox_ui,
                         &self.kanban.tasks,
                         &mut self.emu_state,
                     );
@@ -667,24 +818,162 @@ impl eframe::App for VictiniApp {
                     BeeBoxAction::OpenProjectsModal => {
                         self.layout.center_mode = CenterViewMode::ProjectsModal;
                     }
-                    BeeBoxAction::SetupWorktree => {
-                        let wt_branch = format!("feat/vibe-{}", self.worktrees.len() + 1);
-                        let new_wt_path = project_root.join(format!("../victini-wt-{}", self.worktrees.len() + 1));
-                        match self.git_manager.setup_new_worktree(&wt_branch, &new_wt_path) {
-                            Ok(_) => self.chat_mgr.push_system_notice(format!(
-                                "🔧 Đã khởi tạo Worktree mới '{}' tại {:?}",
-                                wt_branch, new_wt_path
-                            )),
-                            Err(e) => self.chat_mgr.push_system_notice(format!(
-                                "⚠️ Không thể tạo Worktree: {}",
-                                e
-                            )),
+                    BeeBoxAction::OpenBuiltInEditor => {
+                        self.open_file_in_editor("", true);
+                    }
+                    BeeBoxAction::OpenExternalEditor(rel_opt) => {
+                        match self
+                            .git_manager
+                            .open_in_external_editor(rel_opt.as_deref())
+                        {
+                            Ok(msg) => self.chat_mgr.push_system_notice(msg),
+                            Err(e) => self
+                                .chat_mgr
+                                .push_system_notice(format!("Không thể mở Editor ngoài: {}", e)),
+                        }
+                    }
+                    BeeBoxAction::InspectFile { path, edit_mode } => {
+                        self.open_file_in_editor(&path, edit_mode);
+                    }
+                    BeeBoxAction::StageFile(p) => {
+                        let _ = self.git_manager.stage_file(&p);
+                        self.refresh_workspace();
+                    }
+                    BeeBoxAction::UnstageFile(p) => {
+                        let _ = self.git_manager.unstage_file(&p);
+                        self.refresh_workspace();
+                    }
+                    BeeBoxAction::StageAll => {
+                        let _ = self.git_manager.stage_all();
+                        self.refresh_workspace();
+                    }
+                    BeeBoxAction::UnstageAll => {
+                        let _ = self.git_manager.unstage_all();
+                        self.refresh_workspace();
+                    }
+                    BeeBoxAction::DiscardFile(p) => {
+                        match self.git_manager.discard_file(&p) {
+                            Ok(_) => self
+                                .chat_mgr
+                                .push_system_notice(format!("✓ Đã khôi phục file '{}'", p)),
+                            Err(e) => self
+                                .chat_mgr
+                                .push_system_notice(format!("Discard lỗi: {}", e)),
                         }
                         self.refresh_workspace();
                     }
+                    BeeBoxAction::SwitchBranch(b) => {
+                        match self.git_manager.switch_branch(&b) {
+                            Ok(_) => self
+                                .chat_mgr
+                                .push_system_notice(format!("✓ Đã chuyển sang nhánh '{}'", b)),
+                            Err(e) => self
+                                .chat_mgr
+                                .push_system_notice(format!("Checkout lỗi: {}", e)),
+                        }
+                        self.refresh_workspace();
+                    }
+                    BeeBoxAction::CreateBranch(b) => {
+                        match self.git_manager.create_and_checkout_branch(&b) {
+                            Ok(_) => self.chat_mgr.push_system_notice(format!(
+                                "✓ Đã tạo & chuyển sang nhánh mới '{}'",
+                                b
+                            )),
+                            Err(e) => self
+                                .chat_mgr
+                                .push_system_notice(format!("Tạo nhánh lỗi: {}", e)),
+                        }
+                        self.refresh_workspace();
+                    }
+                    BeeBoxAction::SetupWorktree(wt_branch) => {
+                        let safe_slug = wt_branch.replace(['/', '\\', ' '], "-");
+                        let new_wt_path = project_root
+                            .parent()
+                            .unwrap_or(&project_root)
+                            .join(format!("{}-wt-{}", proj_name, safe_slug));
+                        match self
+                            .git_manager
+                            .setup_new_worktree(&wt_branch, &new_wt_path)
+                        {
+                            Ok(_) => self.chat_mgr.push_system_notice(format!(
+                                "✓ Đã khởi tạo Worktree '{}' tại {:?}",
+                                wt_branch, new_wt_path
+                            )),
+                            Err(e) => self
+                                .chat_mgr
+                                .push_system_notice(format!("Không thể tạo Worktree: {}", e)),
+                        }
+                        self.refresh_workspace();
+                    }
+                    BeeBoxAction::SwitchWorktree(wt_path) => {
+                        self.switch_to_project(wt_path);
+                    }
+                    BeeBoxAction::RemoveWorktree(wt_path) => {
+                        match self.git_manager.remove_worktree(&wt_path) {
+                            Ok(msg) => self.chat_mgr.push_system_notice(msg),
+                            Err(e) => self.chat_mgr.push_system_notice(format!("{}", e)),
+                        }
+                        self.refresh_workspace();
+                    }
+                    BeeBoxAction::AiGenerateCommitMsg => {
+                        self.commit_message = self
+                            .git_manager
+                            .generate_ai_commit_message(&self.file_changes);
+                    }
+                    BeeBoxAction::Commit(msg) => {
+                        let has_staged = self.file_changes.iter().any(|c| c.is_staged);
+                        if !has_staged {
+                            let _ = self.git_manager.stage_all();
+                        }
+                        match self.git_manager.commit(&msg) {
+                            Ok(oid) => {
+                                self.chat_mgr.push_system_notice(format!(
+                                    "✓ Committed '{}' ({})",
+                                    msg,
+                                    &oid[..7.min(oid.len())]
+                                ));
+                                self.commit_message.clear();
+                            }
+                            Err(e) => self
+                                .chat_mgr
+                                .push_system_notice(format!("Commit thất bại: {}", e)),
+                        }
+                        self.refresh_workspace();
+                    }
+                    BeeBoxAction::GitPush => match self.git_manager.push_current_branch() {
+                        Ok(res) => self.chat_mgr.push_system_notice(res),
+                        Err(e) => self.chat_mgr.push_system_notice(format!("{}", e)),
+                    },
+                    BeeBoxAction::GitPull => match self.git_manager.pull_rebase() {
+                        Ok(res) => {
+                            self.chat_mgr.push_system_notice(res);
+                            self.refresh_workspace();
+                        }
+                        Err(e) => self.chat_mgr.push_system_notice(format!("{}", e)),
+                    },
+                    BeeBoxAction::GitStashSave => {
+                        match self.git_manager.stash_save(&self.commit_message) {
+                            Ok(res) => {
+                                self.chat_mgr.push_system_notice(res);
+                                self.refresh_workspace();
+                            }
+                            Err(e) => self.chat_mgr.push_system_notice(format!("{}", e)),
+                        }
+                    }
+                    BeeBoxAction::GitStashPop => match self.git_manager.stash_pop() {
+                        Ok(res) => {
+                            self.chat_mgr.push_system_notice(res);
+                            self.refresh_workspace();
+                        }
+                        Err(e) => self.chat_mgr.push_system_notice(format!("{}", e)),
+                    },
                     BeeBoxAction::OpenGitLabMr => {
                         let mr_url = self.git_manager.get_gitlab_mr_url();
                         let _ = self.profile_manager.launch_or_connect(Some(&mr_url));
+                        self.chat_mgr.push_system_notice(format!(
+                            "✓ Đã mở trang tạo GitLab Merge Request: {}",
+                            mr_url
+                        ));
                     }
                     BeeBoxAction::TriggerTap(x, y) => {
                         let _ = AdbController::dispatch_tap(x, y);
@@ -695,13 +984,13 @@ impl eframe::App for VictiniApp {
                     }
                     BeeBoxAction::RunBackgroundTask(task_id) => {
                         self.kanban
-                            .spawn_background_agent(&task_id, project_root.clone());
+                            .spawn_background_agent(&task_id, project_root.clone(), None);
                     }
                 }
             }
         }
 
-        // 8. CENTER WORKSPACE AREA (Responsive Chat / Kanban / Split / Diff / Projects / Studio / Settings)
+        // 8. CENTER WORKSPACE AREA
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::none()
@@ -719,15 +1008,18 @@ impl eframe::App for VictiniApp {
                             ui,
                             &self.theme,
                             elapsed_secs,
+                            &proj_name,
+                            &self.branch_name,
                             self.active_agent,
                             self.avatar_state,
                             self.exec_mode,
                             &self.chat_mgr,
                             &self.file_changes,
+                            &self.workspace_files,
                             &self.discovered_skills,
+                            &self.discovered_agents,
                             &mut self.input_prompt,
-                            &mut self.show_mention_popup,
-                            &mut self.show_skill_popup,
+                            &mut self.chat_composer_ui,
                         );
                     }
                     CenterViewMode::KanbanBoard => {
@@ -737,6 +1029,10 @@ impl eframe::App for VictiniApp {
                             elapsed_secs,
                             &mut self.kanban,
                             &mut self.kanban_composer,
+                            &self.discovered_skills,
+                            &self.discovered_agents,
+                            &self.branches,
+                            &self.branch_name,
                         );
                     }
                     CenterViewMode::SplitChatKanban => {
@@ -745,15 +1041,18 @@ impl eframe::App for VictiniApp {
                                 &mut cols[0],
                                 &self.theme,
                                 elapsed_secs,
+                                &proj_name,
+                                &self.branch_name,
                                 self.active_agent,
                                 self.avatar_state,
                                 self.exec_mode,
                                 &self.chat_mgr,
                                 &self.file_changes,
+                                &self.workspace_files,
                                 &self.discovered_skills,
+                                &self.discovered_agents,
                                 &mut self.input_prompt,
-                                &mut self.show_mention_popup,
-                                &mut self.show_skill_popup,
+                                &mut self.chat_composer_ui,
                             );
                             kanban_action = ui::render_agent_kanban_view(
                                 &mut cols[1],
@@ -761,12 +1060,22 @@ impl eframe::App for VictiniApp {
                                 elapsed_secs,
                                 &mut self.kanban,
                                 &mut self.kanban_composer,
+                                &self.discovered_skills,
+                                &self.discovered_agents,
+                                &self.branches,
+                                &self.branch_name,
                             );
                         });
                     }
                     CenterViewMode::GitDiffModal => {
-                        modal_action =
-                            ui::render_git_diff_viewer(ui, &self.theme, &self.active_diff);
+                        modal_action = ui::render_git_diff_viewer(
+                            ui,
+                            &self.theme,
+                            &self.active_diff,
+                            &self.file_changes,
+                            &self.workspace_files,
+                            &mut self.studio_editor,
+                        );
                     }
                     CenterViewMode::ProjectsModal => {
                         modal_action = ui::render_projects_manager(
@@ -811,8 +1120,42 @@ impl eframe::App for VictiniApp {
                         ChatUiAction::SetExecutionMode(m) => {
                             self.exec_mode = m;
                         }
-                        ChatUiAction::SelectActiveAgent(ag) => {
+                        ChatUiAction::SetThreadAgentMode(mode) => {
+                            self.active_agent = mode.resolve_core_agent(self.active_agent);
+                            self.chat_mgr.active_thread_mut().agent_mode = mode;
+                            self.chat_mgr.save(&project_root);
+                        }
+                        ChatUiAction::OpenDedicatedCoreAgent(ag) => {
+                            self.chat_mgr
+                                .open_or_create_dedicated_core_thread(ag, &self.branch_name);
                             self.active_agent = ag;
+                            self.chat_mgr.save(&project_root);
+                        }
+                        ChatUiAction::OpenDedicatedCustomAgent(idx) => {
+                            if let Some(ca) = self.discovered_agents.get(idx) {
+                                self.chat_mgr.open_or_create_dedicated_custom_thread(
+                                    &ca.name,
+                                    &ca.role,
+                                    &ca.content,
+                                    &self.branch_name,
+                                );
+                                self.chat_mgr.save(&project_root);
+                            }
+                        }
+                        ChatUiAction::ToggleAttachFile(f_path) => {
+                            self.chat_mgr.toggle_attached_file(f_path);
+                            self.chat_mgr.save(&project_root);
+                        }
+                        ChatUiAction::ToggleAttachSkill(sk_name) => {
+                            self.chat_mgr.toggle_attached_skill(sk_name);
+                            self.chat_mgr.save(&project_root);
+                        }
+                        ChatUiAction::OpenFileInEditor { path, edit_mode } => {
+                            self.open_file_in_editor(&path, edit_mode);
+                        }
+                        ChatUiAction::RunQuickSlashCommand(cmd) => {
+                            self.input_prompt = cmd;
+                            self.dispatch_chat_prompt();
                         }
                         ChatUiAction::SetQuote(q) => {
                             self.chat_mgr.active_quote = Some(q);
@@ -831,12 +1174,15 @@ impl eframe::App for VictiniApp {
                                 "P1",
                                 agent,
                                 None,
+                                Vec::new(),
                                 &self.branch_name,
+                                KanbanColumn::Backlog,
+                                true,
                                 false,
                                 &project_root,
                             );
                             self.chat_mgr.push_system_notice(format!(
-                                "📊 Đã tạo thẻ {} trên Swarm Kanban cho {}",
+                                "✓ Đã tạo thẻ {} trên Swarm Kanban cho {}",
                                 id,
                                 agent.name()
                             ));
@@ -853,25 +1199,77 @@ impl eframe::App for VictiniApp {
                             description,
                             priority,
                             agent,
+                            custom_agent,
+                            attached_skills,
+                            branch,
+                            column,
+                            auto_schedule_idle,
                             run_now,
                         } => {
+                            let b = if branch.trim().is_empty() {
+                                self.branch_name.clone()
+                            } else {
+                                branch
+                            };
                             self.kanban.create_task(
                                 &title,
                                 &description,
                                 &priority,
                                 agent,
-                                None,
-                                &self.branch_name,
+                                custom_agent,
+                                attached_skills,
+                                &b,
+                                column,
+                                auto_schedule_idle,
                                 run_now,
+                                &project_root,
+                            );
+                        }
+                        KanbanAction::UpdateTask {
+                            task_id,
+                            title,
+                            description,
+                            priority,
+                            agent,
+                            custom_agent,
+                            attached_skills,
+                            branch,
+                            column,
+                            auto_schedule_idle,
+                        } => {
+                            self.kanban.update_task(
+                                &task_id,
+                                title,
+                                description,
+                                priority,
+                                agent,
+                                custom_agent,
+                                attached_skills,
+                                branch,
+                                column,
+                                auto_schedule_idle,
                                 &project_root,
                             );
                         }
                         KanbanAction::ReassignAgent {
                             task_id,
                             next_agent,
+                            custom_agent,
                         } => {
                             self.kanban
-                                .assign_agent(&task_id, next_agent, None, &project_root);
+                                .assign_agent(&task_id, next_agent, custom_agent, &project_root);
+                        }
+                        KanbanAction::MoveToColumn {
+                            task_id,
+                            target_col,
+                            insert_before_id,
+                        } => {
+                            self.kanban.move_task_to_column(
+                                &task_id,
+                                target_col,
+                                insert_before_id.as_deref(),
+                                &project_root,
+                            );
                         }
                         KanbanAction::MoveLeft(id) => {
                             self.kanban.move_task_left(&id, &project_root);
@@ -879,9 +1277,21 @@ impl eframe::App for VictiniApp {
                         KanbanAction::AdvanceTask(id) => {
                             self.kanban.advance_task(&id, &project_root);
                         }
+                        KanbanAction::ApproveTask(id) => {
+                            self.kanban.approve_task(&id, &project_root);
+                        }
+                        KanbanAction::RejectTask { task_id, note } => {
+                            self.kanban.reject_task(&task_id, &note, &project_root);
+                        }
+                        KanbanAction::DuplicateTask(id) => {
+                            self.kanban.duplicate_task(&id, &project_root);
+                        }
                         KanbanAction::RunInBackground(id) => {
                             self.kanban
-                                .spawn_background_agent(&id, project_root.clone());
+                                .spawn_background_agent(&id, project_root.clone(), None);
+                        }
+                        KanbanAction::StopBackground(id) => {
+                            self.kanban.stop_background_agent(&id, &project_root);
                         }
                         KanbanAction::QuoteTaskToChat(q) => {
                             self.chat_mgr.active_quote = Some(q);
@@ -889,6 +1299,9 @@ impl eframe::App for VictiniApp {
                         }
                         KanbanAction::DeleteTask(id) => {
                             self.kanban.delete_task(&id, &project_root);
+                        }
+                        KanbanAction::RestoreTask(card) => {
+                            self.kanban.restore_task(card, &project_root);
                         }
                     }
                 }
@@ -914,6 +1327,40 @@ impl eframe::App for VictiniApp {
                         StudioModalAction::QuoteDiffToChat(q) => {
                             self.chat_mgr.active_quote = Some(q);
                             self.layout.center_mode = CenterViewMode::ChatTimeline;
+                        }
+                        StudioModalAction::OpenFileInEditor { path, edit_mode } => {
+                            self.open_file_in_editor(&path, edit_mode);
+                        }
+                        StudioModalAction::SaveEditedFile { path, content } => {
+                            match self.git_manager.write_file_content(&path, &content) {
+                                Ok(_) => {
+                                    self.studio_editor.status_notice =
+                                        Some(format!("✓ Đã lưu {}", path));
+                                }
+                                Err(e) => {
+                                    self.studio_editor.status_notice =
+                                        Some(format!("Lỗi lưu file: {}", e));
+                                }
+                            }
+                            self.refresh_workspace();
+                        }
+                        StudioModalAction::StageFileFromEditor(p) => {
+                            let _ = self.git_manager.stage_file(&p);
+                            self.refresh_workspace();
+                        }
+                        StudioModalAction::UnstageFileFromEditor(p) => {
+                            let _ = self.git_manager.unstage_file(&p);
+                            self.refresh_workspace();
+                        }
+                        StudioModalAction::DiscardFileFromEditor(p) => {
+                            let _ = self.git_manager.discard_file(&p);
+                            self.refresh_workspace();
+                            self.open_file_in_editor(&p, self.studio_editor.diff_edit_mode);
+                        }
+                        StudioModalAction::OpenExternalEditor(rel_opt) => {
+                            let _ = self
+                                .git_manager
+                                .open_in_external_editor(rel_opt.as_deref());
                         }
                         StudioModalAction::SaveSkill { name, desc, body } => {
                             let _ = SkillDiscovery::create_or_update_skill(
@@ -942,7 +1389,38 @@ impl eframe::App for VictiniApp {
                             self.refresh_workspace();
                         }
                         StudioModalAction::InsertSkillIntoChat(token) => {
-                            self.input_prompt.push_str(&token);
+                            let clean = token.trim().trim_start_matches('$').to_string();
+                            self.chat_mgr.toggle_attached_skill(clean);
+                            self.layout.center_mode = CenterViewMode::ChatTimeline;
+                        }
+                        StudioModalAction::OpenDedicatedAgentChat(agent_name) => {
+                            let mut matched_core = false;
+                            for &ag in ALL_AGENTS {
+                                if ag.name() == agent_name {
+                                    self.chat_mgr.open_or_create_dedicated_core_thread(
+                                        ag,
+                                        &self.branch_name,
+                                    );
+                                    self.active_agent = ag;
+                                    matched_core = true;
+                                    break;
+                                }
+                            }
+                            if !matched_core {
+                                if let Some(ca) = self
+                                    .discovered_agents
+                                    .iter()
+                                    .find(|a| a.name == agent_name)
+                                {
+                                    self.chat_mgr.open_or_create_dedicated_custom_thread(
+                                        &ca.name,
+                                        &ca.role,
+                                        &ca.content,
+                                        &self.branch_name,
+                                    );
+                                }
+                            }
+                            self.chat_mgr.save(&project_root);
                             self.layout.center_mode = CenterViewMode::ChatTimeline;
                         }
                         StudioModalAction::SelectTheme(t) => {
@@ -961,7 +1439,7 @@ async fn main() -> Result<(), eframe::Error> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1320.0, 800.0])
             .with_min_inner_size([640.0, 460.0])
-            .with_title("⚡ VICTINI IDE — Autonomous Vibe-Code & Swarm Kanban Station"),
+            .with_title("VICTINI IDE — Autonomous Vibe-Code & Swarm Kanban Station"),
         ..Default::default()
     };
 

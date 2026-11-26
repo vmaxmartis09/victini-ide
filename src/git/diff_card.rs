@@ -14,6 +14,8 @@ pub struct DiffHunk {
     pub added_count: usize,
     pub removed_count: usize,
     pub lines: Vec<DiffLine>,
+    pub old_content: String,
+    pub new_content: String,
 }
 
 pub fn compute_diff(file_path: &str, old_content: &str, new_content: &str) -> DiffHunk {
@@ -47,5 +49,7 @@ pub fn compute_diff(file_path: &str, old_content: &str, new_content: &str) -> Di
         added_count,
         removed_count,
         lines,
+        old_content: old_content.to_string(),
+        new_content: new_content.to_string(),
     }
 }
