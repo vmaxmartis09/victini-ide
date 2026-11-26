@@ -5,7 +5,7 @@ use crate::ai::{
 use crate::config::{DiscoveredAgent, DiscoveredSkill};
 use crate::git::GitFileChange;
 use crate::theme::{CanhTheme, Lucide};
-use crate::ui::header::{icon_btn, project_badge_code};
+use crate::ui::header::icon_btn;
 use egui::{vec2, Align, Color32, Frame, Layout, Margin, Rounding, ScrollArea, Stroke, Ui};
 
 pub enum ChatUiAction {
@@ -47,7 +47,7 @@ pub fn render_qoder_chat_timeline(
     ui: &mut Ui,
     theme: &CanhTheme,
     _elapsed_secs: f32,
-    project_name: &str,
+    _project_name: &str,
     branch_name: &str,
     active_agent: ElegansAgent,
     avatar_state: AgentAvatarState,
@@ -64,7 +64,6 @@ pub fn render_qoder_chat_timeline(
     let is_streaming = avatar_state == AgentAvatarState::Thinking
         || avatar_state == AgentAvatarState::Answering;
     let thread = chat_mgr.active_thread();
-    let badge = project_badge_code(project_name);
 
     // Auto-trigger popovers when typing @, $, or / at the end of prompt
     if input_prompt.ends_with('@') {
@@ -79,31 +78,23 @@ pub fn render_qoder_chat_timeline(
     }
 
     ui.vertical(|ui| {
-        // 1. T3 Code Top Chat Header Breadcrumb + Dedicated Agent Icon Pill
+        // 1. Sleek Chat Header: Thread Title & Message Count (No redundant breadcrumb)
         ui.horizontal(|ui| {
-            Frame::none()
-                .fill(theme.tag_red_bg)
-                .rounding(Rounding::same(3.5))
-                .inner_margin(Margin::symmetric(4.5, 1.0))
-                .show(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new(&badge)
-                            .color(theme.tag_red)
-                            .strong()
-                            .size(9.5),
-                    );
-                });
             ui.label(
-                egui::RichText::new(project_name)
-                    .color(theme.text_silver)
-                    .size(11.0),
+                egui::RichText::new(Lucide::MESSAGE_SQUARE)
+                    .color(theme.accent_pop)
+                    .size(13.0),
             );
-            ui.label(egui::RichText::new("/").color(theme.text_silver).size(11.0));
             ui.label(
                 egui::RichText::new(&thread.title)
                     .color(theme.text_paper)
                     .strong()
                     .size(12.0),
+            );
+            ui.label(
+                egui::RichText::new(format!("· {} tin nhắn", thread.messages.len()))
+                    .color(theme.text_silver)
+                    .size(10.5),
             );
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

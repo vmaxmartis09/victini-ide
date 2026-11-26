@@ -508,11 +508,11 @@ pub fn render_qoder_sidebar(
                         {
                             continue;
                         }
-                        Frame::none()
+                        let card_resp = Frame::none()
                             .fill(theme.panel_bg)
                             .rounding(Rounding::same(6.0))
                             .stroke(Stroke::new(1.0, theme.border))
-                            .inner_margin(Margin::symmetric(8.0, 5.0))
+                            .inner_margin(Margin::symmetric(8.0, 6.0))
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     ui.label(
@@ -537,8 +537,8 @@ pub fn render_qoder_sidebar(
                                         if icon_btn(
                                             ui,
                                             Lucide::MESSAGE_SQUARE,
-                                            Color32::WHITE,
-                                            theme.success,
+                                            theme.text_silver,
+                                            theme.chip_bg,
                                             &format!("Mở Chat 1-1 riêng với {}", ag.name()),
                                         )
                                         .clicked()
@@ -550,7 +550,11 @@ pub fn render_qoder_sidebar(
                                     });
                                 });
                             });
-                        ui.add_space(4.0);
+                        if card_resp.response.interact(egui::Sense::click()).clicked() {
+                            *show_agents_tab = false;
+                            action = Some(SidebarAction::OpenDedicatedCoreAgent(ag));
+                        }
+                        ui.add_space(3.0);
                     }
 
                     ui.add_space(6.0);
@@ -584,7 +588,7 @@ pub fn render_qoder_sidebar(
                         {
                             continue;
                         }
-                        Frame::none()
+                        let card_resp = Frame::none()
                             .fill(theme.panel_bg)
                             .rounding(Rounding::same(6.0))
                             .stroke(Stroke::new(1.0, theme.border))
@@ -601,8 +605,8 @@ pub fn render_qoder_sidebar(
                                         if icon_btn(
                                             ui,
                                             Lucide::MESSAGE_SQUARE,
-                                            Color32::WHITE,
-                                            theme.info,
+                                            theme.text_silver,
+                                            theme.chip_bg,
                                             &format!("Chat 1-1 với @{}", ag.name),
                                         )
                                         .clicked()
@@ -630,10 +634,14 @@ pub fn render_qoder_sidebar(
                                         .size(9.5),
                                 );
                             });
+                        if card_resp.response.interact(egui::Sense::click()).clicked() {
+                            *show_agents_tab = false;
+                            action = Some(SidebarAction::OpenDedicatedCustomAgent(idx));
+                        }
                         ui.add_space(3.0);
                     }
 
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new(format!("SKILLS ({})", skills.len()))
@@ -645,7 +653,7 @@ pub fn render_qoder_sidebar(
                             if icon_btn(
                                 ui,
                                 Lucide::CLOUD_DOWNLOAD,
-                                theme.info,
+                                theme.accent_pop,
                                 theme.chip_bg,
                                 "Import Skills từ GitHub",
                             )
@@ -656,7 +664,7 @@ pub fn render_qoder_sidebar(
                             if icon_btn(
                                 ui,
                                 Lucide::PLUS,
-                                theme.accent_pop,
+                                theme.text_paper,
                                 theme.chip_bg,
                                 "Tạo Skill mới (SKILL.md)",
                             )
@@ -666,27 +674,94 @@ pub fn render_qoder_sidebar(
                             }
                         });
                     });
-                    for (idx, sk) in skills.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new(format!(
-                                            "{} ${}",
-                                            Lucide::WAND,
-                                            sk.name
-                                        ))
-                                        .color(theme.text_paper)
-                                        .size(10.5),
-                                    )
-                                    .fill(Color32::TRANSPARENT),
-                                )
-                                .on_hover_text(&sk.description)
-                                .clicked()
+                    ui.add_space(3.0);
+
+                    if q.is_empty() {
+                        // Clean, compact card summarizing all skills without spamming 35 rows
+                        Frame::none()
+                            .fill(theme.surface_1)
+                            .rounding(Rounding::same(6.0))
+                            .stroke(Stroke::new(1.0, theme.border))
+                            .inner_margin(Margin::symmetric(9.0, 7.0))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(Lucide::WAND)
+                                            .color(theme.accent_pop)
+                                            .size(13.0),
+                                    );
+                                    ui.vertical(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "Skill Studio ({} skills)",
+                                                skills.len()
+                                            ))
+                                            .color(theme.text_paper)
+                                            .strong()
+                                            .size(10.8),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new("Xem, soạn thảo, test & nạp GitHub")
+                                                .color(theme.text_silver)
+                                                .size(9.2),
+                                        );
+                                    });
+                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                        if icon_btn(
+                                            ui,
+                                            Lucide::CHEVRON_RIGHT,
+                                            theme.text_silver,
+                                            Color32::TRANSPARENT,
+                                            "Mở Skill Studio đầy đủ",
+                                        )
+                                        .clicked()
+                                        {
+                                            action = Some(SidebarAction::SwitchCenterView(
+                                                CenterViewMode::AgentSkillStudio,
+                                            ));
+                                        }
+                                    });
+                                });
+                            });
+                    } else {
+                        // When searching, show matching skills compactly (max 5)
+                        let mut count = 0;
+                        for (idx, sk) in skills.iter().enumerate() {
+                            if !sk.name.to_lowercase().contains(&q)
+                                && !sk.description.to_lowercase().contains(&q)
                             {
-                                action = Some(SidebarAction::InspectSkill(idx));
+                                continue;
                             }
-                        });
+                            if count >= 5 {
+                                ui.label(
+                                    egui::RichText::new("... mở Skill Studio để xem thêm kết quả")
+                                        .color(theme.text_silver)
+                                        .size(9.5),
+                                );
+                                break;
+                            }
+                            count += 1;
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new(format!(
+                                                "{} ${}",
+                                                Lucide::WAND,
+                                                sk.name
+                                            ))
+                                            .color(theme.text_paper)
+                                            .size(10.5),
+                                        )
+                                        .fill(Color32::TRANSPARENT),
+                                    )
+                                    .on_hover_text(&sk.description)
+                                    .clicked()
+                                {
+                                    action = Some(SidebarAction::InspectSkill(idx));
+                                }
+                            });
+                        }
                     }
                 }
             });

@@ -56,7 +56,7 @@ impl Default for BeeBoxUiState {
             show_worktree_manager: false,
             show_commit_box: true,
             show_changes_list: true,
-            show_emulator: true,
+            show_emulator: false,
             new_branch_name: String::new(),
             new_worktree_branch: String::new(),
             confirm_discard_path: None,
