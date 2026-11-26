@@ -678,7 +678,7 @@ pub fn render_settings_modal(
                     for t in CanhTheme::all_themes() {
                         let is_cur = t.id == theme.id;
                         let btn = egui::Button::new(
-                            egui::RichText::new(format!("{} ({})", t.name, t.time_range))
+                            egui::RichText::new(t.name)
                                 .color(if is_cur { Color32::BLACK } else { t.text_paper })
                                 .size(11.0),
                         )
