@@ -1,3 +1,4 @@
+use crate::theme::Lucide;
 use crate::ai::{AgentAvatarState, AvatarManager, ElegansAgent, ExecutionMode};
 use crate::theme::CanhTheme;
 use egui::{vec2, Color32, Frame, Margin, Rounding, ScrollArea, Stroke, Ui};
@@ -36,8 +37,8 @@ pub fn render_vibe_center(
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 let (mode_str, mode_color) = match exec_mode {
                                     ExecutionMode::Auto => ("⚡ Auto Vibe", theme.accent_pop),
-                                    ExecutionMode::Bypass => ("🚀 Bypass", Color32::from_rgb(0xFF, 0x5C, 0x5C)),
-                                    ExecutionMode::Gatekeeper => ("🛡️ Approval", theme.text_silver),
+                                    ExecutionMode::Bypass => (Lucide::PLAY, Color32::from_rgb(0xFF, 0x5C, 0x5C)),
+                                    ExecutionMode::Gatekeeper => (Lucide::STOP, theme.text_silver),
                                 };
 
                                 if ui.button(egui::RichText::new(mode_str).color(mode_color).strong().size(11.0)).clicked() {

@@ -1,3 +1,4 @@
+use crate::theme::Lucide;
 use crate::config::{DiscoveredAgent, DiscoveredSkill};
 use crate::git::{GitFileChange, WorktreeInfo};
 use crate::theme::CanhTheme;
@@ -145,7 +146,7 @@ pub fn render_left_git_rail(
                     ui.label(egui::RichText::new("No custom skills").color(theme.text_silver).size(10.5));
                 } else {
                     for sk in skills {
-                        ui.label(egui::RichText::new(format!("🔧 {}", sk.name)).color(theme.text_paper).size(11.0));
+                        ui.label(egui::RichText::new(format!("{} {}", Lucide::CODE, sk.name)).color(theme.text_paper).size(11.0));
                     }
                 }
             });
@@ -174,7 +175,7 @@ pub fn render_left_git_rail(
                     ui.label(egui::RichText::new("Elegans Swarm Active").color(theme.accent_pop).size(10.5));
                 } else {
                     for ag in agents {
-                        ui.label(egui::RichText::new(format!("🤖 {}", ag.name)).color(theme.text_paper).size(11.0));
+                        ui.label(egui::RichText::new(format!("{} {}", Lucide::BOT, ag.name)).color(theme.text_paper).size(11.0));
                     }
                 }
             });

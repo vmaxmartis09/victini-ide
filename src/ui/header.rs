@@ -1,4 +1,4 @@
-use crate::theme::CanhTheme;
+use crate::theme::{CanhTheme, Lucide};
 use crate::ui::layout_state::{CenterViewMode, LayoutState, ResponsiveBreakpoint};
 use egui::{Align, Color32, Frame, Layout, Margin, Rounding, Ui};
 
@@ -34,10 +34,10 @@ pub fn render_transparent_header(
         };
         ui.add_space(pad);
 
-        // Sidebar Toggle Icon Button
+        // Sidebar Toggle Icon Button (Lucide::PANEL_LEFT)
         let left_active = layout.show_left_sidebar && !layout.left_mini_mode;
         let left_btn = egui::Button::new(
-            egui::RichText::new("◧")
+            egui::RichText::new(Lucide::PANEL_LEFT)
                 .size(13.0)
                 .color(if left_active { theme.accent_pop } else { theme.text_silver }),
         )
@@ -71,9 +71,9 @@ pub fn render_transparent_header(
 
         // Right side: T3 Code Top Window Controls [sidebar right] [split] [window mode]
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            // Right Dock Toggle [◨]
+            // Right Dock Toggle (Lucide::PANEL_RIGHT)
             let right_btn = egui::Button::new(
-                egui::RichText::new("◨")
+                egui::RichText::new(Lucide::PANEL_RIGHT)
                     .size(13.0)
                     .color(if layout.show_right_dock {
                         theme.accent_pop
@@ -88,10 +88,10 @@ pub fn render_transparent_header(
                 action = Some(HeaderAction::ToggleRightDock);
             }
 
-            // Split View [◫]
+            // Split View (Lucide::COLUMNS)
             let split_active = layout.center_mode == CenterViewMode::SplitChatKanban;
             let split_btn = egui::Button::new(
-                egui::RichText::new("◫")
+                egui::RichText::new(Lucide::COLUMNS)
                     .size(13.0)
                     .color(if split_active { theme.accent_pop } else { theme.text_silver }),
             )
@@ -107,11 +107,11 @@ pub fn render_transparent_header(
                 action = Some(HeaderAction::SetCenterMode(next_mode));
             }
 
-            // Kanban View Toggle
+            // Kanban View Toggle (Lucide::KANBAN)
             let kanban_active = layout.center_mode == CenterViewMode::KanbanBoard;
             let kanban_btn = egui::Button::new(
-                egui::RichText::new("📊")
-                    .size(12.0)
+                egui::RichText::new(Lucide::KANBAN)
+                    .size(12.5)
                     .color(if kanban_active { theme.accent_pop } else { theme.text_silver }),
             )
             .fill(Color32::TRANSPARENT)
@@ -126,9 +126,9 @@ pub fn render_transparent_header(
                 action = Some(HeaderAction::SetCenterMode(next_mode));
             }
 
-            // Browser Profile Launcher (Ego Lite / Chrome)
+            // Browser Profile Launcher (Lucide::GLOBE)
             if ui
-                .button(egui::RichText::new("🌐").color(theme.text_silver).size(12.0))
+                .button(egui::RichText::new(Lucide::GLOBE).color(theme.text_silver).size(12.0))
                 .on_hover_text("Launch GitLab / Isolated Browser Profile")
                 .clicked()
             {

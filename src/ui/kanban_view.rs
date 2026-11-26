@@ -1,3 +1,4 @@
+use crate::theme::Lucide;
 use crate::ai::{
     AgentAvatarState, AgentKanbanManager, AgentTaskCard, AvatarManager, ElegansAgent, KanbanColumn,
      QuotedContext, ALL_AGENTS,
@@ -57,7 +58,7 @@ pub fn render_agent_kanban_view(
         // 1. Kanban Top Orchestrator Bar + Auto-Schedule Idle Toggle
         ui.horizontal_wrapped(|ui| {
             ui.label(
-                egui::RichText::new("📊 AI SWARM KANBAN & BACKGROUND ORCHESTRATOR")
+                egui::RichText::new(format!("{} AI SWARM KANBAN & BACKGROUND ORCHESTRATOR", Lucide::KANBAN))
                     .color(theme.accent_pop)
                     .strong()
                     .size(13.0),
@@ -443,7 +444,7 @@ fn render_task_card(
 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui
-                        .small_button("🗑")
+                        .small_button(Lucide::TRASH)
                         .on_hover_text("Xóa task")
                         .clicked()
                     {
@@ -467,7 +468,7 @@ fn render_task_card(
                     }
 
                     if ui
-                        .small_button("💬 Chat")
+                        .small_button(format!("{} Chat", Lucide::MESSAGE_SQUARE))
                         .on_hover_text("Trích dẫn Task & kết quả của Agent này sang khung Chat chính")
                         .clicked()
                     {

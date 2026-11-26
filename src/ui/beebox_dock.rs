@@ -1,7 +1,7 @@
 use crate::ai::{AgentTaskCard, KanbanColumn};
 use crate::emulator::{EmulatorState, TouchRipple, ELEGANS_VIEWPORT_PRESETS};
 use crate::git::GitFileChange;
-use crate::theme::CanhTheme;
+use crate::theme::{CanhTheme, Lucide};
 use egui::{
     pos2, vec2, Align, Align2, Color32, FontId, Frame, Layout, Margin, Pos2, Rounding, ScrollArea,
     Stroke, Ui,
@@ -31,30 +31,33 @@ pub fn render_beebox_panel(
 ) -> Option<BeeBoxAction> {
     let mut action = None;
 
-    // T3 CODE EXACT BEEBOX CONTAINER
-    // Rounded Card Frame with Dark Background (#111111) and border (#191919)
+    // T3 CODE EXACT BEEBOX CONTAINER (#111111)
     Frame::none()
         .fill(Color32::from_rgb(0x11, 0x11, 0x11))
-        .rounding(Rounding::same(14.0))
+        .rounding(Rounding::same(12.0))
         .stroke(Stroke::new(1.0, Color32::from_rgb(0x19, 0x19, 0x19)))
-        .inner_margin(Margin::same(14.0))
+        .inner_margin(Margin::same(12.0))
         .show(ui, |ui| {
             ScrollArea::vertical()
                 .id_salt("t3_beebox_panel_scroll")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    // 1. Header: [Monitor] BeeBox  ... [folder icon]
+                    // 1. Header: BeeBox  ... [folder icon]
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("🖥").color(theme.text_silver).size(13.0));
+                        // Monitor icon glyph drawn cleanly
+                        let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), egui::Sense::hover());
+                        ui.painter().rect_stroke(rect, Rounding::same(2.0), Stroke::new(1.2, theme.text_silver));
+
+                        ui.add_space(3.0);
                         ui.label(
                             egui::RichText::new("BeeBox")
                                 .color(theme.text_paper)
                                 .strong()
-                                .size(12.5),
+                                .size(12.0),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if ui
-                                .button(egui::RichText::new("📁").color(theme.text_silver).size(12.0))
+                                .add(egui::Button::new(egui::RichText::new(Lucide::FOLDER).color(theme.text_silver).size(12.0)).fill(Color32::TRANSPARENT))
                                 .on_hover_text("Open Projects")
                                 .clicked()
                             {
@@ -65,29 +68,27 @@ pub fn render_beebox_panel(
 
                     ui.add_space(8.0);
 
-                    // 2. Action Accordions:
-                    // [↗] Open in editor  v
-                    // [wrench] Setup Worktree  v
+                    // 2. Action Accordions
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("↗").color(theme.text_silver).size(12.0));
-                        ui.label(egui::RichText::new("Open in editor").color(theme.text_silver).size(11.5));
+                        ui.label(egui::RichText::new(Lucide::CODE).color(theme.text_silver).size(11.0));
+                        ui.label(egui::RichText::new("Open in editor").color(theme.text_silver).size(11.0));
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(egui::RichText::new("⌵").color(theme.text_silver).size(10.5));
+                            ui.label(egui::RichText::new(Lucide::CHEVRON_RIGHT).color(theme.text_silver).size(10.0));
                         });
                     });
 
-                    ui.add_space(6.0);
+                    ui.add_space(5.0);
 
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("🔧").color(theme.text_silver).size(12.0));
+                        ui.label(egui::RichText::new(Lucide::GIT_BRANCH).color(theme.text_silver).size(11.0));
                         if ui
-                            .link(egui::RichText::new("Setup Worktree").color(theme.text_silver).size(11.5))
+                            .link(egui::RichText::new("Setup Worktree").color(theme.text_silver).size(11.0))
                             .clicked()
                         {
                             action = Some(BeeBoxAction::SetupWorktree);
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(egui::RichText::new("⌵").color(theme.text_silver).size(10.5));
+                            ui.label(egui::RichText::new(Lucide::CHEVRON_RIGHT).color(theme.text_silver).size(10.0));
                         });
                     });
 
@@ -96,11 +97,8 @@ pub fn render_beebox_panel(
                     ui.add_space(6.0);
 
                     // 3. Git Status section:
-                    //  main  v
-                    // -- Commit  v
-                    // Changes  +0 -0
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("").color(theme.text_silver).size(11.5));
+                        ui.label(egui::RichText::new(Lucide::GIT_BRANCH).color(theme.accent_pop).size(11.0));
                         ui.label(
                             egui::RichText::new(branch_name)
                                 .color(theme.text_paper)
@@ -108,37 +106,37 @@ pub fn render_beebox_panel(
                                 .size(11.5),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(egui::RichText::new("⌵").color(theme.text_silver).size(10.5));
+                            ui.label(egui::RichText::new(Lucide::CHEVRON_DOWN).color(theme.text_silver).size(10.0));
                         });
                     });
 
-                    ui.add_space(6.0);
+                    ui.add_space(5.0);
 
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("⇁").color(theme.text_silver).size(11.5));
+                        ui.label(egui::RichText::new(Lucide::GIT_PR).color(theme.text_silver).size(11.0));
                         if ui
-                            .link(egui::RichText::new("Commit / GitLab MR").color(theme.text_silver).size(11.5))
+                            .link(egui::RichText::new("Commit / GitLab MR").color(theme.text_silver).size(11.0))
                             .clicked()
                         {
                             action = Some(BeeBoxAction::OpenGitLabMr);
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(egui::RichText::new("⌵").color(theme.text_silver).size(10.5));
+                            ui.label(egui::RichText::new(Lucide::CHEVRON_RIGHT).color(theme.text_silver).size(10.0));
                         });
                     });
 
-                    ui.add_space(6.0);
+                    ui.add_space(5.0);
 
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("📄 Changes").color(theme.text_silver).size(11.5));
+                        ui.label(egui::RichText::new("Changes").color(theme.text_silver).size(11.0));
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.label(egui::RichText::new("+0 -0").color(theme.text_silver).size(10.5));
                         });
                     });
 
-                    ui.add_space(10.0);
-                    ui.separator();
                     ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(6.0);
 
                     // 4. Lineage - 4 running ... [...]
                     let active_tasks: Vec<&AgentTaskCard> = kanban_tasks
@@ -150,51 +148,52 @@ pub fn render_beebox_panel(
                         ui.label(
                             egui::RichText::new(format!("Lineage · {} running", active_tasks.len().max(4)))
                                 .color(theme.text_silver)
-                                .size(11.0),
+                                .size(10.5),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(egui::RichText::new("···").color(theme.text_silver).size(12.0));
+                            ui.label(egui::RichText::new("...").color(theme.text_silver).size(11.0));
                         });
                     });
 
-                    ui.add_space(6.0);
+                    ui.add_space(5.0);
 
-                    // Lineage Items:
-                    // ▲ Share link docs     19s
-                    // ∞ Share link tests    21s
-                    // ⚙ Share link API      23s
-                    // ✴ Dashboard share button 25s
+                    // Clean subagents list with colored dots instead of broken tofu icons!
                     let lineage_items = [
-                        ("▲", "Share link docs", "19s", Color32::from_rgb(0x51, 0xA2, 0xFF)),
-                        ("∞", "Share link tests", "21s", Color32::from_rgb(0x4E, 0xC9, 0xB0)),
-                        ("⚙", "Share link API", "23s", Color32::from_rgb(0xE5, 0xC0, 0x7B)),
-                        ("✴", "Dashboard share button", "25s", theme.accent_pop),
+                        ("Share link docs", "19s", Color32::from_rgb(0x51, 0xA2, 0xFF)),
+                        ("Share link tests", "21s", Color32::from_rgb(0x4E, 0xC9, 0xB0)),
+                        ("Share link API", "23s", Color32::from_rgb(0xE5, 0xC0, 0x7B)),
+                        ("Dashboard share button", "25s", theme.accent_pop),
                     ];
 
-                    for (icon, name, time_s, icon_color) in lineage_items {
+                    for (name, time_s, dot_col) in lineage_items {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(icon).color(icon_color).size(11.5));
+                            let (r, _) = ui.allocate_exact_size(vec2(8.0, 8.0), egui::Sense::hover());
+                            ui.painter().circle_filled(r.center(), 2.5, dot_col);
+
                             ui.label(egui::RichText::new(name).color(theme.text_paper).size(11.0));
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                ui.label(egui::RichText::new(time_s).color(theme.text_silver).size(10.5));
+                                ui.label(egui::RichText::new(time_s).color(theme.text_silver).size(10.0));
                             });
                         });
-                        ui.add_space(3.0);
+                        ui.add_space(2.0);
                     }
 
-                    ui.add_space(10.0);
-                    ui.separator();
                     ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(6.0);
 
-                    // 5. Remote Emulator Viewport Canvas
+                    // 5. Live Touch Viewport Canvas
                     ui.horizontal(|ui| {
                         ui.label(
-                            egui::RichText::new("📱 Live Touch Viewport")
+                            egui::RichText::new("Live Touch Viewport")
                                 .color(theme.text_silver)
-                                .size(11.0),
+                                .size(10.5),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.small_button("📸 Snap").clicked() {
+                            if ui
+                                .add(egui::Button::new(egui::RichText::new("Snap").color(theme.text_paper).size(10.0)).fill(Color32::from_rgb(0x19, 0x19, 0x19)))
+                                .clicked()
+                            {
                                 action = Some(BeeBoxAction::CaptureAdbFrame);
                             }
                         });
@@ -207,9 +206,9 @@ pub fn render_beebox_panel(
                     let emu_h = emu_w * 1.5;
 
                     Frame::none()
-                        .fill(Color32::from_rgb(0x05, 0x05, 0x05))
-                        .rounding(Rounding::same(16.0))
-                        .stroke(Stroke::new(1.0, Color32::from_rgb(0x22, 0x22, 0x22)))
+                        .fill(Color32::from_rgb(0x06, 0x06, 0x06))
+                        .rounding(Rounding::same(14.0))
+                        .stroke(Stroke::new(1.0, Color32::from_rgb(0x1E, 0x1E, 0x1E)))
                         .inner_margin(Margin::same(6.0))
                         .show(ui, |ui| {
                             let (rect, resp) = ui.allocate_exact_size(vec2(emu_w, emu_h), egui::Sense::click_and_drag());
@@ -233,7 +232,7 @@ pub fn render_beebox_panel(
                             painter.text(
                                 rect.center(),
                                 Align2::CENTER_CENTER,
-                                format!("{}\n{}×{}\nLive Tap Ready", current_preset.name.split('(').next().unwrap_or(current_preset.name), current_preset.width, current_preset.height),
+                                format!("{}\n{}x{}\nLive Tap Ready", current_preset.name.split('(').next().unwrap_or(current_preset.name), current_preset.width, current_preset.height),
                                 FontId::proportional(10.5),
                                 theme.text_silver,
                             );

@@ -1,3 +1,4 @@
+use crate::theme::Lucide;
 use crate::ai::{AgentAvatarState, AvatarManager, MemoryReaper, QuotedContext, ALL_AGENTS};
 use crate::config::{DiscoveredAgent, DiscoveredSkill, ProjectManager};
 use crate::git::DiffHunk;
@@ -64,7 +65,7 @@ pub fn render_git_diff_viewer(
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             ui.label(
-                egui::RichText::new("🔍 INLINE GIT DIFF VIEWER")
+                egui::RichText::new(format!("{} INLINE GIT DIFF VIEWER", Lucide::SEARCH))
                     .color(theme.accent_pop)
                     .strong()
                     .size(13.0),
@@ -191,7 +192,7 @@ pub fn render_projects_manager(
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             ui.label(
-                egui::RichText::new("📁 MULTI-PROJECT & WORKSPACE MANAGER")
+                egui::RichText::new(format!("{} MULTI-PROJECT & WORKSPACE MANAGER", Lucide::FOLDER))
                     .color(theme.accent_pop)
                     .strong()
                     .size(13.0),
@@ -266,7 +267,7 @@ pub fn render_projects_manager(
                                 ui.label(
                                     egui::RichText::new(format!(
                                         "{} {}",
-                                        if proj.pinned { "📌" } else { "📁" },
+                                        if proj.pinned { Lucide::PIN } else { Lucide::FOLDER },
                                         proj.name
                                     ))
                                     .color(if is_active {
@@ -314,7 +315,7 @@ pub fn render_projects_manager(
                                     }
 
                                     if ui
-                                        .small_button(if proj.pinned { "Bỏ ghim" } else { "📌 Ghim" })
+                                        .small_button(if proj.pinned { "Bỏ ghim" } else { "Ghim" })
                                         .clicked()
                                     {
                                         action = Some(StudioModalAction::TogglePinProject(
@@ -344,7 +345,7 @@ pub fn render_agent_skill_studio(
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             ui.label(
-                egui::RichText::new("🤖 AGENT & SKILL STUDIO — NOTIONISTS AVATAR GALLERY")
+                egui::RichText::new(format!("{} AGENT & SKILL STUDIO — NOTIONISTS AVATAR GALLERY", Lucide::BOT))
                     .color(theme.accent_pop)
                     .strong()
                     .size(13.0),
@@ -366,7 +367,7 @@ pub fn render_agent_skill_studio(
             .inner_margin(Margin::same(10.0))
             .show(ui, |ui| {
                 ui.label(
-                    egui::RichText::new("🎭 Core Swarm Agents (Thư viện Avatar cử động từ /Volumes/Data/core_vm):")
+                    egui::RichText::new("Core Swarm Agents (Thư viện Avatar cử động từ /Volumes/Data/core_vm):")
                         .color(theme.text_silver)
                         .strong()
                         .size(11.0),
@@ -418,7 +419,7 @@ pub fn render_agent_skill_studio(
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     if ui
-                        .selectable_label(!editor.is_editing_agent, "🔧 Tạo / Sửa Skill (SKILL.md)")
+                        .selectable_label(!editor.is_editing_agent, format!("{} Tạo / Sửa Skill (SKILL.md)", Lucide::CODE))
                         .clicked()
                     {
                         editor.is_editing_agent = false;
@@ -426,7 +427,7 @@ pub fn render_agent_skill_studio(
                     if ui
                         .selectable_label(
                             editor.is_editing_agent,
-                            "🤖 Tạo / Sửa Subagent (.claude/agents/*.md)",
+                            format!("{} Tạo / Sửa Subagent (.claude/agents/*.md)", Lucide::BOT),
                         )
                         .clicked()
                     {
@@ -459,7 +460,7 @@ pub fn render_agent_skill_studio(
                     if ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new("💾 Lưu Skill vào Project")
+                                egui::RichText::new(format!("{} Lưu Skill vào Project", Lucide::SAVE))
                                     .color(Color32::BLACK)
                                     .strong(),
                             )
@@ -497,7 +498,7 @@ pub fn render_agent_skill_studio(
                     if ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new("💾 Lưu Subagent vào Project")
+                                egui::RichText::new(format!("{} Lưu Subagent vào Project", Lucide::SAVE))
                                     .color(Color32::BLACK)
                                     .strong(),
                             )
@@ -539,7 +540,7 @@ pub fn render_agent_skill_studio(
                                 .size(11.0),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.small_button("🗑").clicked() {
+                            if ui.small_button(Lucide::TRASH).clicked() {
                                 action = Some(StudioModalAction::DeleteSkill(sk.path.clone()));
                             }
                             if ui.small_button("✎ Sửa").clicked() {
@@ -568,7 +569,7 @@ pub fn render_agent_skill_studio(
                 for ag in agents {
                     ui.horizontal(|ui| {
                         ui.label(
-                            egui::RichText::new(format!("🤖 @{}", ag.name))
+                            egui::RichText::new(format!("@{}", ag.name))
                                 .color(theme.text_paper)
                                 .strong(),
                         );
@@ -578,7 +579,7 @@ pub fn render_agent_skill_studio(
                                 .size(11.0),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.small_button("🗑").clicked() {
+                            if ui.small_button(Lucide::TRASH).clicked() {
                                 action = Some(StudioModalAction::DeleteAgent(ag.path.clone()));
                             }
                             if ui.small_button("✎ Sửa").clicked() {

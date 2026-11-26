@@ -4,7 +4,7 @@ use crate::ai::{
 };
 use crate::config::DiscoveredSkill;
 use crate::git::GitFileChange;
-use crate::theme::CanhTheme;
+use crate::theme::{CanhTheme, Lucide};
 use egui::{vec2, Align, Color32, Frame, Layout, Margin, Rounding, ScrollArea, Stroke, Ui};
 
 pub enum ChatUiAction {
@@ -37,12 +37,10 @@ pub fn render_qoder_chat_timeline(
         || avatar_state == AgentAvatarState::Answering;
 
     ui.vertical(|ui| {
-        // T3 Code Top Chat Header Breadcrumb:
-        // [PN] postplan / Add Expiring Draft Share Links ... right icons [sidebar/dock toggle]
+        // 1. T3 Code Top Chat Header Breadcrumb
         ui.horizontal(|ui| {
-            // PN tag
             Frame::none()
-                .fill(Color32::from_rgb(0x28, 0x10, 0x12))
+                .fill(Color32::from_rgb(0x28, 0x0E, 0x10))
                 .rounding(Rounding::same(3.0))
                 .inner_margin(Margin::symmetric(4.0, 1.0))
                 .show(ui, |ui| {
@@ -70,8 +68,8 @@ pub fn render_qoder_chat_timeline(
 
         ui.add_space(10.0);
 
-        // Chat Timeline Area
-        let scroll_h = (ui.available_height() - 110.0).max(100.0);
+        // 2. Chat Timeline Area
+        let scroll_h = (ui.available_height() - 95.0).max(100.0);
         ScrollArea::vertical()
             .id_salt("t3_center_chat_scroll")
             .auto_shrink([false, false])
@@ -80,44 +78,51 @@ pub fn render_qoder_chat_timeline(
             .show(ui, |ui| {
                 let thread = chat_mgr.active_thread();
 
-                // T3 Code Hero User Request Capsule at top right
                 for msg in &thread.messages {
                     match msg.role {
                         MessageRole::User => {
+                            // User Message in dark rounded capsule on the right
                             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                                 Frame::none()
-                                    .fill(Color32::from_rgb(0x16, 0x16, 0x16)) // T3 dark capsule
+                                    .fill(Color32::from_rgb(0x16, 0x16, 0x16))
                                     .rounding(Rounding::same(14.0))
-                                    .inner_margin(Margin::symmetric(16.0, 10.0))
+                                    .stroke(Stroke::new(1.0, Color32::from_rgb(0x22, 0x22, 0x22)))
+                                    .inner_margin(Margin::symmetric(16.0, 9.0))
                                     .show(ui, |ui| {
                                         ui.label(
                                             egui::RichText::new(&msg.content)
                                                 .color(theme.text_paper)
-                                                .size(12.5),
+                                                .size(12.2),
                                         );
                                     });
                             });
-                            ui.add_space(16.0);
+                            ui.add_space(14.0);
                         }
                         MessageRole::Assistant => {
-                            // T3 Code Assistant Layout:
-                            // "Worked for 20s >"
-                            // Avatar cluster [icon icon icon +1]  4 subagents (4 working)  25s v
-                            // Message text: "Okay, opening Claude, Codex, Muse and Gemini."
-                            // Progress: "◌ Waiting on 4 subagents  Dashboard share button, Share link API... Stop"
+                            // T3 Code Assistant Message Layout
                             ui.vertical(|ui| {
                                 ui.label(
-                                    egui::RichText::new(format!("Worked for {:.0}s ›", msg.duration_secs.max(20.0)))
+                                    egui::RichText::new(format!("Worked for {:.0}s >", msg.duration_secs.max(20.0)))
                                         .color(theme.text_silver)
-                                        .size(11.0),
+                                        .size(10.5),
                                 );
 
-                                ui.add_space(8.0);
+                                ui.add_space(6.0);
 
                                 // Subagent header line
                                 ui.horizontal(|ui| {
-                                    // Cluster badges
-                                    ui.label(egui::RichText::new("✴ ⚙ ◬ +1").color(theme.accent_pop).size(12.0));
+                                    // Colored dot icons for subagents
+                                    let colors = [
+                                        theme.accent_pop,
+                                        Color32::from_rgb(0x51, 0xA2, 0xFF),
+                                        Color32::from_rgb(0x4E, 0xC9, 0xB0),
+                                        Color32::from_rgb(0xE5, 0xC0, 0x7B),
+                                    ];
+                                    for c in colors {
+                                        let (r, _) = ui.allocate_exact_size(vec2(8.0, 8.0), egui::Sense::hover());
+                                        ui.painter().circle_filled(r.center(), 2.8, c);
+                                    }
+
                                     ui.add_space(4.0);
                                     ui.label(egui::RichText::new("4 subagents").color(theme.text_paper).strong().size(11.5));
                                     ui.label(
@@ -127,7 +132,7 @@ pub fn render_qoder_chat_timeline(
                                     );
 
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                        ui.label(egui::RichText::new("25s ⌵").color(theme.text_silver).size(10.5));
+                                        ui.label(egui::RichText::new("25s v").color(theme.text_silver).size(10.5));
                                     });
                                 });
 
@@ -140,21 +145,15 @@ pub fn render_qoder_chat_timeline(
                                         .size(12.5),
                                 );
 
-                                ui.add_space(12.0);
+                                ui.add_space(10.0);
 
                                 // Waiting / progress indicator
                                 ui.horizontal_wrapped(|ui| {
-                                    let spinner_icon = if is_streaming { "◌" } else { "✓" };
-                                    ui.label(egui::RichText::new(spinner_icon).color(theme.text_silver).size(12.0));
+                                    ui.label(egui::RichText::new("o").color(theme.text_silver).size(10.0));
                                     ui.label(
-                                        egui::RichText::new("Waiting on subagents")
+                                        egui::RichText::new("Waiting on 4 subagents Dashboard share button, Share link API, Share link tests...")
                                             .color(theme.text_silver)
-                                            .size(11.0),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new("Dashboard share button, Share link API, Share link tests...")
-                                            .color(theme.text_silver)
-                                            .size(11.0),
+                                            .size(10.5),
                                     );
                                     if is_streaming {
                                         if ui.small_button("Stop").clicked() {
@@ -163,13 +162,13 @@ pub fn render_qoder_chat_timeline(
                                     }
                                 });
 
-                                // Action bar
+                                // Action buttons (Subtle and clean with Lucide icons)
                                 ui.add_space(6.0);
                                 ui.horizontal(|ui| {
-                                    if ui.small_button("📋 Copy").clicked() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} Copy", Lucide::COPY)).color(theme.text_silver).size(10.0)).fill(Color32::from_rgb(0x16, 0x16, 0x16))).clicked() {
                                         ui.ctx().copy_text(msg.content.clone());
                                     }
-                                    if ui.small_button("❝ Quote").clicked() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} Quote", Lucide::QUOTE)).color(theme.text_silver).size(10.0)).fill(Color32::from_rgb(0x16, 0x16, 0x16))).clicked() {
                                         action = Some(ChatUiAction::SetQuote(QuotedContext {
                                             source_msg_id: msg.id.clone(),
                                             author_label: "T3 Subagents".to_string(),
@@ -177,7 +176,7 @@ pub fn render_qoder_chat_timeline(
                                             is_quote_block: true,
                                         }));
                                     }
-                                    if ui.small_button("📊 +Kanban").clicked() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} +Kanban", Lucide::KANBAN)).color(theme.text_silver).size(10.0)).fill(Color32::from_rgb(0x16, 0x16, 0x16))).clicked() {
                                         action = Some(ChatUiAction::SendMessageToKanban {
                                             title: msg.content.lines().next().unwrap_or("Task").to_string(),
                                             detail: msg.content.clone(),
@@ -186,15 +185,15 @@ pub fn render_qoder_chat_timeline(
                                     }
                                 });
                             });
-                            ui.add_space(18.0);
+                            ui.add_space(16.0);
                         }
                         MessageRole::System => {
                             Frame::none()
                                 .fill(Color32::from_rgb(0x11, 0x11, 0x11))
                                 .rounding(Rounding::same(6.0))
-                                .inner_margin(Margin::symmetric(10.0, 6.0))
+                                .inner_margin(Margin::symmetric(10.0, 5.0))
                                 .show(ui, |ui| {
-                                    ui.label(egui::RichText::new(&msg.content).color(theme.text_silver).size(11.0));
+                                    ui.label(egui::RichText::new(&msg.content).color(theme.text_silver).size(10.5));
                                 });
                             ui.add_space(8.0);
                         }
@@ -202,36 +201,34 @@ pub fn render_qoder_chat_timeline(
                 }
             });
 
-        ui.add_space(6.0);
+        ui.add_space(4.0);
 
-        // T3 Code Floating Bottom Prompt Bar (1:1 design):
-        // Dark pill container (#121212) with subtle hairline border (#191919)
-        // Upper line: "Ask anything. @ files, $ skills, / commands"
-        // Lower icons: [paperclip] [empty space] [sparkle Opus 5.5 High] [arrow up inside rounded circle]
+        // 3. T3 Code Floating Bottom Prompt Bar (Dark OLED Pill #111111)
         Frame::none()
-            .fill(Color32::from_rgb(0x12, 0x12, 0x12))
-            .rounding(Rounding::same(16.0))
-            .stroke(Stroke::new(1.0, Color32::from_rgb(0x1E, 0x1E, 0x1E)))
-            .inner_margin(Margin::symmetric(16.0, 10.0))
+            .fill(Color32::from_rgb(0x11, 0x11, 0x11))
+            .rounding(Rounding::same(14.0))
+            .stroke(Stroke::new(1.0, Color32::from_rgb(0x1C, 0x1C, 0x1C)))
+            .inner_margin(Margin::symmetric(14.0, 8.0))
             .show(ui, |ui| {
                 ui.vertical(|ui| {
-                    // Active Quote preview if any
                     if let Some(ref q) = chat_mgr.active_quote {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("❝ {}:", q.author_label)).color(theme.accent_pop).size(10.5));
+                            ui.label(egui::RichText::new(format!("Quote ({}):", q.author_label)).color(theme.accent_pop).size(10.0));
                             let short_snip: String = q.snippet.chars().take(60).collect();
-                            ui.label(egui::RichText::new(short_snip).color(theme.text_silver).size(10.5));
-                            if ui.small_button("✕").clicked() {
+                            ui.label(egui::RichText::new(short_snip).color(theme.text_silver).size(10.0));
+                            if ui.small_button("x").clicked() {
                                 action = Some(ChatUiAction::ClearQuote);
                             }
                         });
-                        ui.add_space(4.0);
+                        ui.add_space(3.0);
                     }
 
-                    // Text Editor
+                    // Prompt Input - Frame false to prevent white box!
                     let text_edit = egui::TextEdit::multiline(input_prompt)
                         .desired_rows(1)
                         .desired_width(ui.available_width())
+                        .frame(false)
+                        .text_color(theme.text_paper)
                         .hint_text("Ask anything. @ files, $ skills, / commands");
                     let resp = ui.add(text_edit);
 
@@ -246,40 +243,45 @@ pub fn render_qoder_chat_timeline(
                         }
                     }
 
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
 
-                    // Lower Action Bar
+                    // Lower Action Row
                     ui.horizontal(|ui| {
-                        // Left Paperclip icon
-                        if ui.button(egui::RichText::new("📎").color(theme.text_silver).size(13.0)).clicked() {
+                        // Paperclip button
+                        if ui.add(egui::Button::new(egui::RichText::new("+").color(theme.text_silver).size(14.0)).fill(Color32::TRANSPARENT)).clicked() {
                             *show_mention_popup = !*show_mention_popup;
                         }
 
-                        // Right: Model Selector Pill [✴ Opus 5.5 High] + Arrow Up Send Button [↑]
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            // Rounded Up Arrow Send Button
-                            let send_btn = egui::Button::new(
-                                egui::RichText::new("↑").color(Color32::BLACK).strong().size(14.0),
-                            )
-                            .fill(theme.text_paper)
-                            .rounding(Rounding::same(12.0));
+                            // Rounded Up Arrow Send Button (Crisp White Circle with Lucide::ARROW_UP)
+                            let (btn_rect, btn_resp) = ui.allocate_exact_size(vec2(24.0, 24.0), egui::Sense::click());
+                            ui.painter().circle_filled(btn_rect.center(), 12.0, theme.text_paper);
+                            ui.painter().text(
+                                btn_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                Lucide::ARROW_UP,
+                                egui::FontId::proportional(13.0),
+                                Color32::BLACK,
+                            );
 
-                            if ui.add_sized(vec2(26.0, 26.0), send_btn).clicked()
-                                && !input_prompt.trim().is_empty()
-                            {
+                            if btn_resp.clicked() && !input_prompt.trim().is_empty() {
                                 action = Some(ChatUiAction::SendPrompt);
                             }
 
-                            ui.add_space(6.0);
+                            ui.add_space(8.0);
 
-                            // Model Badge: ✴ Opus 5.5 High
+                            // Model Badge: Opus 5.5 High
                             Frame::none()
                                 .fill(Color32::from_rgb(0x19, 0x19, 0x19))
                                 .rounding(Rounding::same(6.0))
-                                .inner_margin(Margin::symmetric(8.0, 3.0))
+                                .inner_margin(Margin::symmetric(7.0, 3.0))
                                 .show(ui, |ui| {
                                     ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("✴").color(theme.accent_pop).size(11.0));
+                                        ui.label(
+                                            egui::RichText::new(Lucide::SPARKLES)
+                                                .color(theme.accent_pop)
+                                                .size(11.0),
+                                        );
                                         ui.label(
                                             egui::RichText::new("Opus 5.5 High")
                                                 .color(theme.text_paper)

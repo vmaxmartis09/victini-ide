@@ -16,7 +16,7 @@ use ai::{
 use browser_gitlab::BrowserProfileManager;
 use chrono::Timelike;
 use config::{DiscoveredAgent, DiscoveredSkill, ProjectManager, SkillDiscovery};
-use eframe::egui;
+use eframe::egui::{self, Color32};
 use emulator::{AdbController, EmulatorState};
 use git::{DiffHunk, GitFileChange, GitManager, WorktreeInfo};
 use std::path::PathBuf;
@@ -132,9 +132,39 @@ impl VictiniApp {
 
     fn apply_theme_visuals(ctx: &egui::Context, theme: &CanhTheme) {
         let mut visuals = egui::Visuals::dark();
-        visuals.panel_fill = theme.bg_field;
-        visuals.window_fill = theme.panel_bg;
-        visuals.extreme_bg_color = theme.bg_ink;
+        visuals.dark_mode = true;
+        visuals.panel_fill = theme.bg_field; // #0A0A0A
+        visuals.window_fill = theme.panel_bg; // #111111
+        visuals.extreme_bg_color = Color32::from_rgb(0x12, 0x12, 0x12); // Lock text inputs to dark #121212, never white!
+        visuals.faint_bg_color = Color32::from_rgb(0x16, 0x16, 0x16);
+        
+        // Noninteractive & Text styling
+        visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(0x11, 0x11, 0x11);
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, theme.border);
+        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
+        
+        // Inactive widgets (TextEdit background & Buttons)
+        visuals.widgets.inactive.bg_fill = Color32::from_rgb(0x12, 0x12, 0x12); // Dark inputs
+        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, theme.border);
+        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
+        visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
+
+        // Hovered widgets
+        visuals.widgets.hovered.bg_fill = Color32::from_rgb(0x1A, 0x1A, 0x1A);
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, Color32::from_rgb(0x28, 0x28, 0x28));
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, Color32::WHITE);
+        visuals.widgets.hovered.rounding = egui::Rounding::same(6.0);
+
+        // Active / Pressed widgets
+        visuals.widgets.active.bg_fill = Color32::from_rgb(0x22, 0x22, 0x22);
+        visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, theme.accent_pop);
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, Color32::WHITE);
+        visuals.widgets.active.rounding = egui::Rounding::same(6.0);
+
+        // Selection & focus
+        visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(0xE2, 0x5B, 0x2D, 120);
+        visuals.selection.stroke = egui::Stroke::new(1.0, theme.accent_pop);
+        
         ctx.set_visuals(visuals);
     }
 
