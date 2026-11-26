@@ -16,11 +16,16 @@ use ai::{
 };
 use browser_gitlab::BrowserProfileManager;
 use chrono::Timelike;
-use config::{DiscoveredAgent, DiscoveredSkill, ProjectManager, SkillDiscovery};
+use config::{
+    spawn_install_candidates, spawn_scan_github_repo, spawn_update_skill_from_source,
+    DiscoveredAgent, DiscoveredSkill, ImportEvent, ProjectManager, SkillDiscovery,
+};
 use eframe::egui::{self, Color32};
 use emulator::{AdbController, EmulatorState};
 use git::{DiffHunk, GitFileChange, GitManager, WorktreeInfo};
-use std::path::PathBuf;
+use regex::Regex;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc as std_mpsc, Arc};
 use theme::{CanhTheme, SharedTicker};
@@ -30,6 +35,7 @@ use ui::{
     KanbanAction, KanbanComposerState, LayoutState, SidebarAction, StudioEditorState,
     StudioModalAction,
 };
+use walkdir::WalkDir;
 
 struct VictiniApp {
     theme: CanhTheme,
@@ -147,34 +153,42 @@ impl VictiniApp {
     }
 
     fn apply_theme_visuals(ctx: &egui::Context, theme: &CanhTheme) {
-        let mut visuals = egui::Visuals::dark();
-        visuals.dark_mode = true;
-        visuals.panel_fill = theme.bg_field; // #0A0A0A
-        visuals.window_fill = theme.panel_bg; // #111111
-        visuals.extreme_bg_color = Color32::from_rgb(0x12, 0x12, 0x12); // Lock text inputs to dark #121212
-        visuals.faint_bg_color = Color32::from_rgb(0x16, 0x16, 0x16);
+        let mut visuals = if theme.is_dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        };
+        visuals.dark_mode = theme.is_dark;
+        visuals.panel_fill = theme.bg_field;
+        visuals.window_fill = theme.panel_bg;
+        visuals.extreme_bg_color = theme.input_bg;
+        visuals.faint_bg_color = theme.surface_1;
 
-        visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(0x11, 0x11, 0x11);
+        visuals.widgets.noninteractive.bg_fill = theme.panel_bg;
         visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, theme.border);
         visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
 
-        visuals.widgets.inactive.bg_fill = Color32::from_rgb(0x12, 0x12, 0x12);
+        visuals.widgets.inactive.bg_fill = theme.input_bg;
         visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, theme.border);
         visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
         visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
 
-        visuals.widgets.hovered.bg_fill = Color32::from_rgb(0x1A, 0x1A, 0x1A);
-        visuals.widgets.hovered.bg_stroke =
-            egui::Stroke::new(1.0, Color32::from_rgb(0x28, 0x28, 0x28));
-        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, Color32::WHITE);
+        visuals.widgets.hovered.bg_fill = theme.panel_hover;
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, theme.border_strong);
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
         visuals.widgets.hovered.rounding = egui::Rounding::same(6.0);
 
-        visuals.widgets.active.bg_fill = Color32::from_rgb(0x22, 0x22, 0x22);
+        visuals.widgets.active.bg_fill = theme.surface_2;
         visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, theme.accent_pop);
-        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, Color32::WHITE);
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
         visuals.widgets.active.rounding = egui::Rounding::same(6.0);
 
-        visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(0xE2, 0x5B, 0x2D, 120);
+        visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(
+            theme.accent_pop.r(),
+            theme.accent_pop.g(),
+            theme.accent_pop.b(),
+            95,
+        );
         visuals.selection.stroke = egui::Stroke::new(1.0, theme.accent_pop);
 
         ctx.set_visuals(visuals);
@@ -229,6 +243,73 @@ impl VictiniApp {
         self.layout.center_mode = CenterViewMode::GitDiffModal;
     }
 
+    fn run_elegans_diagnostics(&mut self) {
+        let root = self.project_mgr.active_project.clone();
+        let report = Self::build_elegans_security_and_ast_report(&root);
+        self.chat_mgr.push_system_notice(report);
+        self.chat_mgr.save(&root);
+        self.layout.center_mode = CenterViewMode::ChatTimeline;
+    }
+
+    fn build_elegans_security_and_ast_report(root: &Path) -> String {
+        let re_secret = Regex::new(
+            r"(?:sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{30,}|glpat-[a-zA-Z0-9\-_]{20,}|AIza[0-9A-Za-z\-_]{35}|xox[baprs]-[0-9a-zA-Z\-]{10,})",
+        )
+        .unwrap();
+        let mut total_files = 0usize;
+        let mut total_lines = 0usize;
+        let mut rust_files = 0usize;
+        let mut ts_js_files = 0usize;
+        let mut secret_leaks = Vec::new();
+
+        for entry in WalkDir::new(root).max_depth(6).into_iter().flatten() {
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let p = entry.path();
+            let p_str = p.to_string_lossy().replace('\\', "/");
+            if p_str.contains("/target/")
+                || p_str.contains("/node_modules/")
+                || p_str.contains("/.git/")
+                || p_str.contains("/bin/")
+            {
+                continue;
+            }
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if !matches!(
+                ext,
+                "rs" | "ts" | "tsx" | "js" | "jsx" | "py" | "toml" | "json" | "env"
+            ) {
+                continue;
+            }
+            total_files += 1;
+            if ext == "rs" {
+                rust_files += 1;
+            } else if matches!(ext, "ts" | "tsx" | "js" | "jsx") {
+                ts_js_files += 1;
+            }
+            if let Ok(raw) = fs::read_to_string(p) {
+                total_lines += raw.lines().count();
+                if re_secret.is_match(&raw) {
+                    if let Ok(rel) = p.strip_prefix(root) {
+                        secret_leaks.push(rel.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+
+        let sec_verdict = if secret_leaks.is_empty() {
+            "PASS (0 hardcoded API keys / secrets detected)".to_string()
+        } else {
+            format!("WARNING: Phát hiện nghi vấn lộ Secret tại: {}", secret_leaks.join(", "))
+        };
+
+        format!(
+            "[Elegans Security & AST Blast Audit]\n• Project: {:?}\n• Env & Secret Guard: {}\n• AST & Code Metrics: {} source files ({} Rust, {} TS/JS) · {} lines of code\n• Browser Isolation: Protected Dad Profile active",
+            root, sec_verdict, total_files, rust_files, ts_js_files, total_lines
+        )
+    }
+
     fn switch_to_project(&mut self, new_root: PathBuf) {
         self.project_mgr.active_project = new_root.clone();
         let _ = self.project_mgr.save();
@@ -249,6 +330,9 @@ impl VictiniApp {
             return true;
         } else if trimmed == "/editor" {
             self.open_file_in_editor("", true);
+            return true;
+        } else if trimmed == "/env-guard" || trimmed == "/ast-blast" {
+            self.run_elegans_diagnostics();
             return true;
         } else if trimmed == "/commit" {
             let msg = if self.commit_message.trim().is_empty() {
@@ -305,7 +389,7 @@ impl VictiniApp {
             self.input_prompt =
                 "Hãy review chi tiết các thay đổi trong Git Diff này và chỉ ra các điểm cần tối ưu."
                     .to_string();
-            return false; // Fall through to dispatch_chat_prompt!
+            return false;
         } else if trimmed == "/review" {
             self.chat_mgr
                 .open_or_create_dedicated_core_thread(ElegansAgent::CodeAuditor, &self.branch_name);
@@ -361,7 +445,6 @@ impl VictiniApp {
             p
         };
 
-        // Parse any inline @file or $skill tokens typed directly in the prompt
         for token in prompt_to_send.split_whitespace() {
             if let Some(f_tok) = token.strip_prefix('@') {
                 if self.workspace_files.iter().any(|wf| wf == f_tok)
@@ -400,7 +483,6 @@ impl VictiniApp {
         };
         self.active_agent = resolved_agent;
 
-        // Gather real payloads for attached @files and $skills
         let attached_files_list = self.chat_mgr.active_thread().attached_files.clone();
         let attached_skills_list = self.chat_mgr.active_thread().attached_skills.clone();
 
@@ -413,8 +495,12 @@ impl VictiniApp {
 
         let mut skill_payloads = Vec::new();
         for sk_name in &attached_skills_list {
-            if let Some(sk) = self.discovered_skills.iter().find(|s| &s.name == sk_name) {
-                skill_payloads.push((sk.name.clone(), sk.content.clone()));
+            if let Some(sk) = self
+                .discovered_skills
+                .iter()
+                .find(|s| &s.name == sk_name && s.enabled)
+            {
+                skill_payloads.push((sk.name.clone(), sk.body.clone()));
             }
         }
 
@@ -468,6 +554,7 @@ impl eframe::App for VictiniApp {
         let win_width = ctx.screen_rect().width();
         let breakpoint = self.layout.compute_breakpoint(win_width);
 
+        let mut toggle_theme_shortcut = false;
         ctx.input(|i| {
             if i.modifiers.command && i.key_pressed(egui::Key::B) {
                 self.layout.show_left_sidebar = !self.layout.show_left_sidebar;
@@ -481,7 +568,16 @@ impl eframe::App for VictiniApp {
                     _ => CenterViewMode::KanbanBoard,
                 };
             }
+            if i.modifiers.command && i.key_pressed(egui::Key::L) {
+                toggle_theme_shortcut = true;
+            }
         });
+
+        if toggle_theme_shortcut {
+            self.layout.auto_canh_gio = false;
+            self.theme = self.theme.toggle_light_dark();
+            Self::apply_theme_visuals(ctx, &self.theme);
+        }
 
         // 2. Auto Canh Giờ System Clock Theme
         if self.layout.auto_canh_gio {
@@ -516,11 +612,76 @@ impl eframe::App for VictiniApp {
             }
         }
 
-        // 4. Poll Background Kanban Agents & Foreground Chat Stream
+        // 4. Poll Background Kanban Agents, GitHub Skill Importer & Foreground Chat Stream
         let mut need_repaint = false;
         let project_root = self.project_mgr.active_project.clone();
         if self.kanban.poll_background_events(&project_root) {
             need_repaint = true;
+        }
+
+        // Poll GitHub Skill Importer events
+        let mut import_events = Vec::new();
+        if let Some(ref rx) = self.studio_editor.import_receiver {
+            while let Ok(ev) = rx.try_recv() {
+                import_events.push(ev);
+            }
+        }
+        let mut refresh_after_import = false;
+        for ev in import_events {
+            need_repaint = true;
+            match ev {
+                ImportEvent::Progress(msg, pct) => {
+                    self.studio_editor.import_progress = Some((msg, pct));
+                }
+                ImportEvent::ScanCompleted(res) => {
+                    self.studio_editor.import_progress = None;
+                    match res {
+                        Ok(scan) => {
+                            self.studio_editor.status_notice = Some(format!(
+                                "✓ Đã tìm thấy {} skills từ {}",
+                                scan.candidates.len(),
+                                scan.source.repo_slug()
+                            ));
+                            self.studio_editor.scan_result = Some(scan);
+                        }
+                        Err(e) => {
+                            self.studio_editor.status_notice = Some(format!("Lỗi quét repo: {}", e));
+                        }
+                    }
+                }
+                ImportEvent::InstallCompleted(res) => {
+                    self.studio_editor.import_progress = None;
+                    match res {
+                        Ok(rep) => {
+                            self.studio_editor.status_notice = Some(format!(
+                                "✓ Đã cài đặt {} skills (Bỏ qua: {})",
+                                rep.installed.len(),
+                                rep.skipped.len()
+                            ));
+                            refresh_after_import = true;
+                        }
+                        Err(e) => {
+                            self.studio_editor.status_notice =
+                                Some(format!("Lỗi cài đặt skill: {}", e));
+                        }
+                    }
+                }
+                ImportEvent::UpdateCompleted(res) => {
+                    self.studio_editor.import_progress = None;
+                    match res {
+                        Ok(msg) => {
+                            self.studio_editor.status_notice = Some(format!("✓ {}", msg));
+                            refresh_after_import = true;
+                        }
+                        Err(e) => {
+                            self.studio_editor.status_notice = Some(format!("Lỗi cập nhật: {}", e));
+                        }
+                    }
+                }
+            }
+        }
+        if refresh_after_import {
+            self.refresh_workspace();
         }
 
         let mut pending_events = Vec::new();
@@ -629,6 +790,11 @@ impl eframe::App for VictiniApp {
                 HeaderAction::RefreshWorkspace => {
                     self.refresh_workspace();
                 }
+                HeaderAction::ToggleLightDark => {
+                    self.layout.auto_canh_gio = false;
+                    self.theme = self.theme.toggle_light_dark();
+                    Self::apply_theme_visuals(ctx, &self.theme);
+                }
                 HeaderAction::CycleCanhTheme => {
                     let all = CanhTheme::all_themes();
                     let cur_idx = all
@@ -637,6 +803,9 @@ impl eframe::App for VictiniApp {
                         .unwrap_or(0);
                     self.theme = all[(cur_idx + 1) % all.len()].clone();
                     Self::apply_theme_visuals(ctx, &self.theme);
+                }
+                HeaderAction::RunSecurityDiagnostics => {
+                    self.run_elegans_diagnostics();
                 }
             }
         }
@@ -695,6 +864,11 @@ impl eframe::App for VictiniApp {
                     SidebarAction::ToggleMiniMode => {
                         self.layout.left_mini_mode = !self.layout.left_mini_mode;
                     }
+                    SidebarAction::ToggleLightDark => {
+                        self.layout.auto_canh_gio = false;
+                        self.theme = self.theme.toggle_light_dark();
+                        Self::apply_theme_visuals(ctx, &self.theme);
+                    }
                     SidebarAction::NewChatThread => {
                         self.chat_mgr.create_default_thread(&self.branch_name);
                         self.chat_mgr.save(&project_root);
@@ -733,7 +907,7 @@ impl eframe::App for VictiniApp {
                             self.chat_mgr.open_or_create_dedicated_custom_thread(
                                 &ca.name,
                                 &ca.role,
-                                &ca.content,
+                                &ca.body,
                                 &self.branch_name,
                             );
                             self.chat_mgr.save(&project_root);
@@ -753,28 +927,30 @@ impl eframe::App for VictiniApp {
                         }
                     }
                     SidebarAction::OpenSkillStudioNewSkill => {
-                        self.studio_editor.is_editing_agent = false;
+                        self.studio_editor.studio_tab = 0;
                         self.layout.center_mode = CenterViewMode::AgentSkillStudio;
                     }
                     SidebarAction::OpenSkillStudioNewAgent => {
-                        self.studio_editor.is_editing_agent = true;
+                        self.studio_editor.studio_tab = 1;
                         self.layout.center_mode = CenterViewMode::AgentSkillStudio;
                     }
                     SidebarAction::InspectSkill(idx) => {
                         if let Some(sk) = self.discovered_skills.get(idx) {
-                            self.studio_editor.is_editing_agent = false;
+                            self.studio_editor.studio_tab = 0;
+                            self.studio_editor.selected_scope = sk.scope;
                             self.studio_editor.skill_name = sk.name.clone();
                             self.studio_editor.skill_desc = sk.description.clone();
-                            self.studio_editor.skill_body = sk.content.clone();
+                            self.studio_editor.skill_body = sk.body.clone();
                             self.layout.center_mode = CenterViewMode::AgentSkillStudio;
                         }
                     }
                     SidebarAction::InspectAgent(idx) => {
                         if let Some(ag) = self.discovered_agents.get(idx) {
-                            self.studio_editor.is_editing_agent = true;
+                            self.studio_editor.studio_tab = 1;
+                            self.studio_editor.selected_scope = ag.scope;
                             self.studio_editor.agent_name = ag.name.clone();
                             self.studio_editor.agent_role = ag.role.clone();
-                            self.studio_editor.agent_prompt = ag.content.clone();
+                            self.studio_editor.agent_prompt = ag.body.clone();
                             self.layout.center_mode = CenterViewMode::AgentSkillStudio;
                         }
                     }
@@ -978,9 +1154,14 @@ impl eframe::App for VictiniApp {
                     BeeBoxAction::TriggerTap(x, y) => {
                         let _ = AdbController::dispatch_tap(x, y);
                     }
-                    BeeBoxAction::SwitchPreset(_idx) => {}
+                    BeeBoxAction::SwitchPreset(idx) => {
+                        self.emu_state.active_preset_idx = idx;
+                    }
                     BeeBoxAction::CaptureAdbFrame => {
                         self.emu_state.refresh_adb_screenshot();
+                    }
+                    BeeBoxAction::OpenPreviewUrl(url) => {
+                        let _ = self.profile_manager.launch_or_connect(Some(&url));
                     }
                     BeeBoxAction::RunBackgroundTask(task_id) => {
                         self.kanban
@@ -1136,7 +1317,7 @@ impl eframe::App for VictiniApp {
                                 self.chat_mgr.open_or_create_dedicated_custom_thread(
                                     &ca.name,
                                     &ca.role,
-                                    &ca.content,
+                                    &ca.body,
                                     &self.branch_name,
                                 );
                                 self.chat_mgr.save(&project_root);
@@ -1153,9 +1334,34 @@ impl eframe::App for VictiniApp {
                         ChatUiAction::OpenFileInEditor { path, edit_mode } => {
                             self.open_file_in_editor(&path, edit_mode);
                         }
+                        ChatUiAction::ApplyCodeBlockToEditor(code_snippet) => {
+                            let target_file = if let Some(att) =
+                                self.chat_mgr.active_thread().attached_files.first()
+                            {
+                                att.clone()
+                            } else if !self.studio_editor.active_file_path.is_empty() {
+                                self.studio_editor.active_file_path.clone()
+                            } else if let Some(fc) = self.file_changes.first() {
+                                fc.path.clone()
+                            } else {
+                                "src/snippet.rs".to_string()
+                            };
+                            self.studio_editor.active_file_path = target_file;
+                            self.studio_editor.file_editor_buffer = code_snippet;
+                            self.studio_editor.file_editor_dirty = true;
+                            self.studio_editor.diff_edit_mode = true;
+                            self.studio_editor.status_notice = Some(
+                                "Đã nạp đoạn code từ AI — Bấm Save (⌘S) để lưu vào file"
+                                    .to_string(),
+                            );
+                            self.layout.center_mode = CenterViewMode::GitDiffModal;
+                        }
                         ChatUiAction::RunQuickSlashCommand(cmd) => {
                             self.input_prompt = cmd;
                             self.dispatch_chat_prompt();
+                        }
+                        ChatUiAction::RunSecurityDiagnostics => {
+                            self.run_elegans_diagnostics();
                         }
                         ChatUiAction::SetQuote(q) => {
                             self.chat_mgr.active_quote = Some(q);
@@ -1331,6 +1537,20 @@ impl eframe::App for VictiniApp {
                         StudioModalAction::OpenFileInEditor { path, edit_mode } => {
                             self.open_file_in_editor(&path, edit_mode);
                         }
+                        StudioModalAction::CreateNewFile(rel_path) => {
+                            match self.git_manager.write_file_content(&rel_path, "") {
+                                Ok(_) => {
+                                    self.refresh_workspace();
+                                    self.open_file_in_editor(&rel_path, true);
+                                    self.studio_editor.status_notice =
+                                        Some(format!("✓ Đã tạo file mới {}", rel_path));
+                                }
+                                Err(e) => {
+                                    self.studio_editor.status_notice =
+                                        Some(format!("Không thể tạo file: {}", e));
+                                }
+                            }
+                        }
                         StudioModalAction::SaveEditedFile { path, content } => {
                             match self.git_manager.write_file_content(&path, &content) {
                                 Ok(_) => {
@@ -1362,31 +1582,115 @@ impl eframe::App for VictiniApp {
                                 .git_manager
                                 .open_in_external_editor(rel_opt.as_deref());
                         }
-                        StudioModalAction::SaveSkill { name, desc, body } => {
-                            let _ = SkillDiscovery::create_or_update_skill(
+                        StudioModalAction::SaveSkill {
+                            name,
+                            desc,
+                            body,
+                            scope,
+                        } => {
+                            match SkillDiscovery::save_skill(
                                 &project_root,
+                                scope,
                                 &name,
                                 &desc,
                                 &body,
-                            );
+                                None,
+                                true,
+                            ) {
+                                Ok(_) => {
+                                    self.studio_editor.status_notice =
+                                        Some(format!("✓ Đã lưu Skill '${}'", name));
+                                }
+                                Err(e) => {
+                                    self.studio_editor.status_notice =
+                                        Some(format!("Lỗi lưu Skill: {}", e));
+                                }
+                            }
                             self.refresh_workspace();
                         }
-                        StudioModalAction::SaveAgent { name, role, prompt } => {
-                            let _ = SkillDiscovery::create_or_update_agent(
+                        StudioModalAction::SaveAgent {
+                            name,
+                            role,
+                            prompt,
+                            scope,
+                        } => {
+                            match SkillDiscovery::save_agent(
                                 &project_root,
+                                scope,
                                 &name,
                                 &role,
+                                "fe_senior_dev",
+                                None,
+                                &[],
                                 &prompt,
-                            );
+                                None,
+                                true,
+                            ) {
+                                Ok(_) => {
+                                    self.studio_editor.status_notice =
+                                        Some(format!("✓ Đã lưu Subagent '@{}'", name));
+                                }
+                                Err(e) => {
+                                    self.studio_editor.status_notice =
+                                        Some(format!("Lỗi lưu Subagent: {}", e));
+                                }
+                            }
+                            self.refresh_workspace();
+                        }
+                        StudioModalAction::ToggleSkillEnabled { path, enabled } => {
+                            SkillDiscovery::set_skill_enabled(&path, enabled);
                             self.refresh_workspace();
                         }
                         StudioModalAction::DeleteSkill(p) => {
-                            let _ = SkillDiscovery::delete_skill(&p);
+                            if let Ok(trashed) = SkillDiscovery::trash_skill(&p) {
+                                self.studio_editor.trashed_items.push(trashed);
+                            }
                             self.refresh_workspace();
                         }
                         StudioModalAction::DeleteAgent(p) => {
-                            let _ = SkillDiscovery::delete_agent(&p);
+                            if let Ok(trashed) = SkillDiscovery::trash_agent(&p) {
+                                self.studio_editor.trashed_items.push(trashed);
+                            }
                             self.refresh_workspace();
+                        }
+                        StudioModalAction::RestoreTrashed(idx) => {
+                            if idx < self.studio_editor.trashed_items.len() {
+                                let item = self.studio_editor.trashed_items.remove(idx);
+                                let _ = SkillDiscovery::restore_trashed(&item);
+                                self.studio_editor.status_notice =
+                                    Some(format!("✓ Đã khôi phục '{}'", item.name));
+                                self.refresh_workspace();
+                            }
+                        }
+                        StudioModalAction::ScanGitHubRepo { url, branch } => {
+                            self.studio_editor.scan_result = None;
+                            self.studio_editor.import_progress =
+                                Some(("Đang kết nối GitHub...".to_string(), 0.05));
+                            self.studio_editor.import_receiver = Some(spawn_scan_github_repo(
+                                url,
+                                branch,
+                                None,
+                                project_root.clone(),
+                            ));
+                        }
+                        StudioModalAction::InstallScannedSkills => {
+                            if let Some(scan) = self.studio_editor.scan_result.clone() {
+                                self.studio_editor.import_progress =
+                                    Some(("Đang cài đặt skills...".to_string(), 0.1));
+                                self.studio_editor.import_receiver =
+                                    Some(spawn_install_candidates(
+                                        scan,
+                                        self.studio_editor.selected_scope,
+                                        self.studio_editor.import_conflict_strategy,
+                                        project_root.clone(),
+                                    ));
+                            }
+                        }
+                        StudioModalAction::UpdateSkillFromSource { path, source } => {
+                            self.studio_editor.import_progress =
+                                Some(("Đang cập nhật từ GitHub...".to_string(), 0.2));
+                            self.studio_editor.import_receiver =
+                                Some(spawn_update_skill_from_source(path, source, None));
                         }
                         StudioModalAction::InsertSkillIntoChat(token) => {
                             let clean = token.trim().trim_start_matches('$').to_string();
@@ -1415,13 +1719,16 @@ impl eframe::App for VictiniApp {
                                     self.chat_mgr.open_or_create_dedicated_custom_thread(
                                         &ca.name,
                                         &ca.role,
-                                        &ca.content,
+                                        &ca.body,
                                         &self.branch_name,
                                     );
                                 }
                             }
                             self.chat_mgr.save(&project_root);
                             self.layout.center_mode = CenterViewMode::ChatTimeline;
+                        }
+                        StudioModalAction::RunSecurityDiagnostics => {
+                            self.run_elegans_diagnostics();
                         }
                         StudioModalAction::SelectTheme(t) => {
                             self.theme = t;

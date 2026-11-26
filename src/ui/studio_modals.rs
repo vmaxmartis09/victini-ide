@@ -1,10 +1,15 @@
 use crate::ai::{AgentAvatarState, AvatarManager, MemoryReaper, QuotedContext, ALL_AGENTS};
-use crate::config::{DiscoveredAgent, DiscoveredSkill, ProjectManager};
+use crate::config::{
+    ConflictStrategy, DiscoveredAgent, DiscoveredSkill, ImportEvent, ProjectManager,
+    ScanRepoResult, SkillScope, SkillSourceMeta, TrashedItem,
+};
 use crate::git::{DiffHunk, GitFileChange};
 use crate::theme::{CanhTheme, Lucide, SharedTicker};
-use crate::ui::layout_state::{CenterViewMode, LayoutState};
+use crate::ui::header::icon_btn;
+use crate::ui::layout_state::LayoutState;
 use egui::{vec2, Align, Color32, Frame, Layout, Margin, Rounding, ScrollArea, Stroke, Ui};
 use std::path::PathBuf;
+use std::sync::mpsc as std_mpsc;
 
 pub enum StudioModalAction {
     CloseToChat,
@@ -16,6 +21,7 @@ pub enum StudioModalAction {
         path: String,
         edit_mode: bool,
     },
+    CreateNewFile(String),
     SaveEditedFile {
         path: String,
         content: String,
@@ -28,16 +34,33 @@ pub enum StudioModalAction {
         name: String,
         desc: String,
         body: String,
+        scope: SkillScope,
     },
     SaveAgent {
         name: String,
         role: String,
         prompt: String,
+        scope: SkillScope,
+    },
+    ToggleSkillEnabled {
+        path: PathBuf,
+        enabled: bool,
     },
     DeleteSkill(PathBuf),
     DeleteAgent(PathBuf),
+    RestoreTrashed(usize),
+    ScanGitHubRepo {
+        url: String,
+        branch: String,
+    },
+    InstallScannedSkills,
+    UpdateSkillFromSource {
+        path: PathBuf,
+        source: SkillSourceMeta,
+    },
     InsertSkillIntoChat(String),
     OpenDedicatedAgentChat(String),
+    RunSecurityDiagnostics,
     SelectTheme(CanhTheme),
 }
 
@@ -49,15 +72,27 @@ pub struct StudioEditorState {
     pub agent_name: String,
     pub agent_role: String,
     pub agent_prompt: String,
-    pub is_editing_agent: bool,
+    pub selected_scope: SkillScope,
+    pub studio_tab: usize, // 0 = Create Skill, 1 = Create Agent, 2 = Import GitHub Repo
 
-    // Phase A.4: Live File & Diff Editor State
+    // Live File & Diff Editor State
     pub active_file_path: String,
     pub file_editor_buffer: String,
     pub file_editor_dirty: bool,
     pub diff_edit_mode: bool, // false = Diff View, true = Live Code Editor
     pub file_filter_query: String,
+    pub new_file_path_input: String,
+    pub show_new_file_input: bool,
     pub status_notice: Option<String>,
+
+    // GitHub Skill Importer & Trash Undo State
+    pub github_repo_url: String,
+    pub github_branch: String,
+    pub import_conflict_strategy: ConflictStrategy,
+    pub import_progress: Option<(String, f32)>,
+    pub scan_result: Option<ScanRepoResult>,
+    pub import_receiver: Option<std_mpsc::Receiver<ImportEvent>>,
+    pub trashed_items: Vec<TrashedItem>,
 }
 
 impl Default for StudioEditorState {
@@ -73,18 +108,28 @@ impl Default for StudioEditorState {
             agent_role: "Chuyên gia tối ưu Rust WGPU & GitLab CI".to_string(),
             agent_prompt: "Thực thi code sạch, gọn theo nguyên tắc Ponytail Zero-Bloat."
                 .to_string(),
-            is_editing_agent: false,
+            selected_scope: SkillScope::Project,
+            studio_tab: 0,
             active_file_path: String::new(),
             file_editor_buffer: String::new(),
             file_editor_dirty: false,
             diff_edit_mode: false,
             file_filter_query: String::new(),
+            new_file_path_input: String::new(),
+            show_new_file_input: false,
             status_notice: None,
+            github_repo_url: "nextlevelbuilder/ui-ux-pro-max-skill".to_string(),
+            github_branch: String::new(),
+            import_conflict_strategy: ConflictStrategy::Overwrite,
+            import_progress: None,
+            scan_result: None,
+            import_receiver: None,
+            trashed_items: Vec::new(),
         }
     }
 }
 
-/// Phase A.4: Dual-Mode Interactive Git Diff Viewer & Live Code Editor
+/// Phase A.4 & 3.3: Dual-Mode Interactive Git Diff Viewer & Live Code Editor (Icon-First + Light/Dark Ready)
 pub fn render_git_diff_viewer(
     ui: &mut Ui,
     theme: &CanhTheme,
@@ -107,7 +152,7 @@ pub fn render_git_diff_viewer(
     }
 
     ui.vertical(|ui| {
-        // Top Header Bar
+        // Top Header Bar (100% Icon-First Action Controls)
         ui.horizontal(|ui| {
             ui.label(
                 egui::RichText::new(format!(
@@ -123,60 +168,48 @@ pub fn render_git_diff_viewer(
                 ui.add_space(8.0);
                 ui.label(
                     egui::RichText::new(notice)
-                        .color(Color32::from_rgb(0x4E, 0xC9, 0xB0))
+                        .color(theme.success)
                         .size(11.0),
                 );
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new(format!("{} Quay lại Chat", Lucide::X))
-                                .color(theme.text_paper)
-                                .size(11.0),
-                        )
-                        .fill(Color32::from_rgb(0x18, 0x18, 0x18)),
-                    )
-                    .clicked()
+                if icon_btn(
+                    ui,
+                    Lucide::X,
+                    theme.text_paper,
+                    theme.chip_bg,
+                    "Quay lại màn hình Chat chính",
+                )
+                .clicked()
                 {
                     action = Some(StudioModalAction::CloseToChat);
                 }
 
-                if !editor.active_file_path.is_empty() {
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                egui::RichText::new("External IDE")
-                                    .color(theme.text_silver)
-                                    .size(10.5),
-                            )
-                            .fill(Color32::from_rgb(0x18, 0x18, 0x18)),
-                        )
-                        .on_hover_text("Mở file này bằng Cursor / VS Code")
-                        .clicked()
-                    {
-                        action = Some(StudioModalAction::OpenExternalEditor(Some(
-                            editor.active_file_path.clone(),
-                        )));
-                    }
+                if !editor.active_file_path.is_empty()
+                    && icon_btn(
+                        ui,
+                        Lucide::EXTERNAL_LINK,
+                        theme.text_silver,
+                        theme.chip_bg,
+                        "Mở file này bằng Cursor / VS Code / Zed",
+                    )
+                    .clicked()
+                {
+                    action = Some(StudioModalAction::OpenExternalEditor(Some(
+                        editor.active_file_path.clone(),
+                    )));
                 }
 
                 if let Some(ref hunk) = diff_hunk {
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                egui::RichText::new(format!(
-                                    "{} Quote Diff vào Chat AI",
-                                    Lucide::QUOTE
-                                ))
-                                .color(theme.accent_pop)
-                                .strong()
-                                .size(11.0),
-                            )
-                            .fill(Color32::from_rgb(0x1C, 0x14, 0x12)),
-                        )
-                        .clicked()
+                    if icon_btn(
+                        ui,
+                        Lucide::QUOTE,
+                        theme.accent_pop,
+                        theme.accent_surface,
+                        "Trích dẫn (Quote) Git Diff này vào khung Chat AI",
+                    )
+                    .clicked()
                     {
                         let snippet: String = hunk
                             .lines
@@ -208,40 +241,93 @@ pub fn render_git_diff_viewer(
 
         ui.add_space(8.0);
 
-        // Two-Column Layout: Left = Changed Files & Project Explorer | Right = Diff / Code Editor
         let total_h = (ui.available_height() - 10.0).max(200.0);
         ui.horizontal(|ui| {
-            // LEFT PANE: Changed Files + Project File Picker
+            // LEFT PANE: Changed Files + Project File Picker + New File Creator
             Frame::none()
-                .fill(Color32::from_rgb(0x0D, 0x0D, 0x0D))
+                .fill(theme.panel_bg)
                 .rounding(Rounding::same(8.0))
                 .stroke(Stroke::new(1.0, theme.border))
                 .inner_margin(Margin::same(8.0))
                 .show(ui, |ui| {
-                    ui.set_width(220.0);
+                    ui.set_width(225.0);
                     ui.set_min_height(total_h);
 
                     ui.vertical(|ui| {
-                        // Filter search input
-                        Frame::none()
-                            .fill(Color32::from_rgb(0x14, 0x14, 0x14))
-                            .rounding(Rounding::same(5.0))
-                            .stroke(Stroke::new(1.0, theme.border))
-                            .inner_margin(Margin::symmetric(6.0, 3.0))
-                            .show(ui, |ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut editor.file_filter_query)
-                                        .hint_text("Filter files...")
-                                        .frame(false)
-                                        .text_color(theme.text_paper),
-                                );
+                        // Filter search input + New File Icon Button
+                        ui.horizontal(|ui| {
+                            let filter_w = (ui.available_width() - 32.0).max(80.0);
+                            Frame::none()
+                                .fill(theme.input_bg)
+                                .rounding(Rounding::same(5.0))
+                                .stroke(Stroke::new(1.0, theme.border))
+                                .inner_margin(Margin::symmetric(6.0, 3.0))
+                                .show(ui, |ui| {
+                                    ui.add_sized(
+                                        vec2(filter_w, 18.0),
+                                        egui::TextEdit::singleline(&mut editor.file_filter_query)
+                                            .hint_text("Filter files...")
+                                            .frame(false)
+                                            .text_color(theme.text_paper),
+                                    );
+                                });
+
+                            if icon_btn(
+                                ui,
+                                Lucide::FILE_PLUS,
+                                theme.accent_pop,
+                                theme.chip_bg,
+                                "Tạo file mới trong Project",
+                            )
+                            .clicked()
+                            {
+                                editor.show_new_file_input = !editor.show_new_file_input;
+                            }
+                        });
+
+                        if editor.show_new_file_input {
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                let w = (ui.available_width() - 32.0).max(80.0);
+                                Frame::none()
+                                    .fill(theme.input_bg)
+                                    .rounding(Rounding::same(4.0))
+                                    .stroke(Stroke::new(1.0, theme.accent_pop))
+                                    .inner_margin(Margin::symmetric(6.0, 2.0))
+                                    .show(ui, |ui| {
+                                        ui.add_sized(
+                                            vec2(w, 18.0),
+                                            egui::TextEdit::singleline(
+                                                &mut editor.new_file_path_input,
+                                            )
+                                            .hint_text("src/new_file.rs")
+                                            .frame(false)
+                                            .text_color(theme.text_paper),
+                                        );
+                                    });
+                                if icon_btn(
+                                    ui,
+                                    Lucide::CHECK,
+                                    theme.on_accent,
+                                    theme.accent_pop,
+                                    "Tạo & mở file mới",
+                                )
+                                .clicked()
+                                    && !editor.new_file_path_input.trim().is_empty()
+                                {
+                                    let p = editor.new_file_path_input.trim().to_string();
+                                    editor.new_file_path_input.clear();
+                                    editor.show_new_file_input = false;
+                                    action = Some(StudioModalAction::CreateNewFile(p));
+                                }
                             });
+                        }
 
                         ui.add_space(6.0);
 
                         ScrollArea::vertical()
                             .id_salt("editor_left_files_scroll")
-                            .max_height(total_h - 40.0)
+                            .max_height(total_h - 45.0)
                             .show(ui, |ui| {
                                 let q = editor.file_filter_query.trim().to_lowercase();
 
@@ -259,7 +345,7 @@ pub fn render_git_diff_viewer(
 
                                 if file_changes.is_empty() {
                                     ui.label(
-                                        egui::RichText::new("Không có file thay đổi")
+                                        egui::RichText::new("Working tree clean")
                                             .color(theme.text_silver)
                                             .size(10.0),
                                     );
@@ -270,7 +356,7 @@ pub fn render_git_diff_viewer(
                                         }
                                         let is_sel = editor.active_file_path == fc.path;
                                         let bg = if is_sel {
-                                            Color32::from_rgb(0x1C, 0x1C, 0x1C)
+                                            theme.surface_2
                                         } else {
                                             Color32::TRANSPARENT
                                         };
@@ -281,11 +367,9 @@ pub fn render_git_diff_viewer(
                                             .show(ui, |ui| {
                                                 ui.horizontal(|ui| {
                                                     let st_col = match fc.status.as_str() {
-                                                        "A" | "?" => {
-                                                            Color32::from_rgb(0x4E, 0xC9, 0xB0)
-                                                        }
-                                                        "D" => Color32::from_rgb(0xE0, 0x48, 0x48),
-                                                        _ => Color32::from_rgb(0xE5, 0xC0, 0x7B),
+                                                        "A" | "?" => theme.success,
+                                                        "D" => theme.danger,
+                                                        _ => theme.warning,
                                                     };
                                                     ui.label(
                                                         egui::RichText::new(&fc.status)
@@ -378,7 +462,7 @@ pub fn render_git_diff_viewer(
             // RIGHT PANE: Main Diff / Code Editor Canvas
             let right_w = ui.available_width().max(200.0);
             Frame::none()
-                .fill(Color32::from_rgb(0x0D, 0x0D, 0x0D))
+                .fill(theme.panel_bg)
                 .rounding(Rounding::same(8.0))
                 .stroke(Stroke::new(1.0, theme.border))
                 .inner_margin(Margin::same(10.0))
@@ -387,7 +471,7 @@ pub fn render_git_diff_viewer(
                     ui.set_min_height(total_h);
 
                     ui.vertical(|ui| {
-                        // Editor Toolbar: File Name + Mode Switcher + Stage / Discard / Save
+                        // Editor Toolbar: File Name + Icon-First Action Buttons
                         ui.horizontal(|ui| {
                             let title_path = if !editor.active_file_path.is_empty() {
                                 editor.active_file_path.as_str()
@@ -406,24 +490,25 @@ pub fn render_git_diff_viewer(
 
                             if editor.file_editor_dirty {
                                 ui.label(
-                                    egui::RichText::new("● Unsaved")
+                                    egui::RichText::new("●")
                                         .color(theme.accent_pop)
                                         .strong()
-                                        .size(10.5),
-                                );
+                                        .size(12.0),
+                                )
+                                .on_hover_text("Có thay đổi chưa lưu (Bấm ⌘S hoặc nút Save)");
                             }
 
                             if let Some(ref hunk) = diff_hunk {
                                 ui.label(
                                     egui::RichText::new(format!("+{}", hunk.added_count))
-                                        .color(Color32::from_rgb(0x4E, 0xC9, 0xB0))
+                                        .color(theme.success)
                                         .monospace()
                                         .strong()
                                         .size(11.0),
                                 );
                                 ui.label(
                                     egui::RichText::new(format!("-{}", hunk.removed_count))
-                                        .color(Color32::from_rgb(0xE0, 0x48, 0x48))
+                                        .color(theme.danger)
                                         .monospace()
                                         .strong()
                                         .size(11.0),
@@ -431,25 +516,21 @@ pub fn render_git_diff_viewer(
                             }
 
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                // Save Button
+                                // Save Icon Button
                                 if !editor.active_file_path.is_empty() {
-                                    let save_btn = egui::Button::new(
-                                        egui::RichText::new(format!(
-                                            "{} Save File (⌘S)",
-                                            Lucide::SAVE
-                                        ))
-                                        .color(Color32::BLACK)
-                                        .strong()
-                                        .size(10.5),
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::SAVE,
+                                        theme.on_accent,
+                                        if editor.file_editor_dirty {
+                                            theme.accent_pop
+                                        } else {
+                                            theme.success
+                                        },
+                                        "Lưu file xuống ổ cứng (⌘S / Ctrl+S)",
                                     )
-                                    .fill(if editor.file_editor_dirty {
-                                        theme.accent_pop
-                                    } else {
-                                        Color32::from_rgb(0x4E, 0xC9, 0xB0)
-                                    })
-                                    .rounding(Rounding::same(5.0));
-
-                                    if ui.add(save_btn).clicked() {
+                                    .clicked()
+                                    {
                                         editor.file_editor_dirty = false;
                                         editor.status_notice = Some(format!(
                                             "✓ Đã lưu {}",
@@ -461,22 +542,20 @@ pub fn render_git_diff_viewer(
                                         });
                                     }
 
-                                    // Stage / Discard buttons if file is in file_changes
+                                    // Stage / Unstage / Discard Icon Buttons
                                     if let Some(fc) = file_changes
                                         .iter()
                                         .find(|c| c.path == editor.active_file_path)
                                     {
                                         if fc.is_staged {
-                                            if ui
-                                                .add(
-                                                    egui::Button::new(
-                                                        egui::RichText::new("Unstage")
-                                                            .color(theme.text_silver)
-                                                            .size(10.5),
-                                                    )
-                                                    .fill(Color32::from_rgb(0x1A, 0x1A, 0x1A)),
-                                                )
-                                                .clicked()
+                                            if icon_btn(
+                                                ui,
+                                                Lucide::MINUS,
+                                                theme.warning,
+                                                theme.chip_bg,
+                                                "Unstage file này",
+                                            )
+                                            .clicked()
                                             {
                                                 action =
                                                     Some(StudioModalAction::UnstageFileFromEditor(
@@ -484,18 +563,28 @@ pub fn render_git_diff_viewer(
                                                     ));
                                             }
                                         } else {
-                                            if ui
-                                                .add(
-                                                    egui::Button::new(
-                                                        egui::RichText::new("+ Stage")
-                                                            .color(Color32::from_rgb(
-                                                                0x4E, 0xC9, 0xB0,
-                                                            ))
-                                                            .size(10.5),
-                                                    )
-                                                    .fill(Color32::from_rgb(0x16, 0x22, 0x1E)),
-                                                )
-                                                .clicked()
+                                            if icon_btn(
+                                                ui,
+                                                Lucide::ROTATE_CCW,
+                                                theme.danger,
+                                                theme.chip_bg,
+                                                "Discard thay đổi của file này về HEAD",
+                                            )
+                                            .clicked()
+                                            {
+                                                action =
+                                                    Some(StudioModalAction::DiscardFileFromEditor(
+                                                        fc.path.clone(),
+                                                    ));
+                                            }
+                                            if icon_btn(
+                                                ui,
+                                                Lucide::PLUS,
+                                                theme.success,
+                                                theme.chip_bg,
+                                                "Stage file này",
+                                            )
+                                            .clicked()
                                             {
                                                 action =
                                                     Some(StudioModalAction::StageFileFromEditor(
@@ -506,172 +595,175 @@ pub fn render_git_diff_viewer(
                                     }
                                 }
 
-                                ui.add_space(8.0);
+                                ui.add_space(6.0);
 
-                                // Mode Switcher: [Live Code Editor] vs [Diff View]
-                                let edit_btn = egui::Button::new(
-                                    egui::RichText::new(format!(
-                                        "{} Live Code Editor",
-                                        Lucide::CODE
-                                    ))
-                                    .color(if editor.diff_edit_mode {
-                                        Color32::BLACK
+                                // Icon Mode Switcher: [Edit (Live Code Editor)] vs [Layers (Diff View)]
+                                if icon_btn(
+                                    ui,
+                                    Lucide::EDIT,
+                                    if editor.diff_edit_mode {
+                                        theme.on_accent
                                     } else {
                                         theme.text_paper
-                                    })
-                                    .strong()
-                                    .size(10.5),
+                                    },
+                                    if editor.diff_edit_mode {
+                                        theme.accent_pop
+                                    } else {
+                                        theme.chip_bg
+                                    },
+                                    "Chế độ: Live Code Editor (Sửa code trực tiếp)",
                                 )
-                                .fill(if editor.diff_edit_mode {
-                                    theme.accent_pop
-                                } else {
-                                    Color32::from_rgb(0x1A, 0x1A, 0x1A)
-                                })
-                                .rounding(Rounding::same(5.0));
-
-                                if ui.add(edit_btn).clicked() {
+                                .clicked()
+                                {
                                     editor.diff_edit_mode = true;
                                 }
 
-                                let diff_btn = egui::Button::new(
-                                    egui::RichText::new(format!("{} Diff View", Lucide::LAYERS))
-                                        .color(if !editor.diff_edit_mode {
-                                            Color32::BLACK
-                                        } else {
-                                            theme.text_paper
-                                        })
-                                        .strong()
-                                        .size(10.5),
+                                if icon_btn(
+                                    ui,
+                                    Lucide::LAYERS,
+                                    if !editor.diff_edit_mode {
+                                        theme.on_accent
+                                    } else {
+                                        theme.text_paper
+                                    },
+                                    if !editor.diff_edit_mode {
+                                        theme.accent_pop
+                                    } else {
+                                        theme.chip_bg
+                                    },
+                                    "Chế độ: Unified Diff View (Xem chi tiết dòng thêm/xóa)",
                                 )
-                                .fill(if !editor.diff_edit_mode {
-                                    theme.accent_pop
-                                } else {
-                                    Color32::from_rgb(0x1A, 0x1A, 0x1A)
-                                })
-                                .rounding(Rounding::same(5.0));
-
-                                if ui.add(diff_btn).clicked() {
+                                .clicked()
+                                {
                                     editor.diff_edit_mode = false;
                                 }
                             });
                         });
 
-                        ui.add_space(8.0);
+                        ui.add_space(6.0);
                         ui.separator();
                         ui.add_space(6.0);
 
-                        // Main Content Body
+                        // Main Content Body (Code Background adapts to Light & Dark Mode)
                         let body_h = (total_h - 55.0).max(150.0);
-                        if editor.diff_edit_mode {
-                            // LIVE CODE EDITOR MODE
-                            if editor.active_file_path.is_empty() {
-                                ui.label(
-                                    egui::RichText::new(
-                                        "Chọn một file từ cột bên trái để bắt đầu chỉnh sửa trực tiếp.",
-                                    )
-                                    .color(theme.text_silver),
-                                );
-                            } else {
-                                ScrollArea::vertical()
-                                    .id_salt("live_code_editor_scroll")
-                                    .auto_shrink([false, false])
-                                    .max_height(body_h)
-                                    .show(ui, |ui| {
-                                        let line_count =
-                                            editor.file_editor_buffer.lines().count().max(1);
-                                        ui.horizontal_top(|ui| {
-                                            // Line numbers gutter
-                                            let gutter: String = (1..=line_count)
-                                                .map(|n| format!("{:>4}", n))
-                                                .collect::<Vec<_>>()
-                                                .join("\n");
-                                            ui.label(
-                                                egui::RichText::new(gutter)
-                                                    .color(Color32::from_rgb(0x55, 0x55, 0x55))
-                                                    .monospace()
-                                                    .size(11.5),
-                                            );
-                                            ui.add_space(8.0);
-
-                                            // Dark Code Editor Area
-                                            let resp = ui.add(
-                                                egui::TextEdit::multiline(
-                                                    &mut editor.file_editor_buffer,
-                                                )
-                                                .code_editor()
-                                                .desired_rows(30)
-                                                .desired_width(ui.available_width())
-                                                .frame(false)
-                                                .text_color(theme.text_paper),
-                                            );
-                                            if resp.changed() {
-                                                editor.file_editor_dirty = true;
-                                            }
-                                        });
-                                    });
-                            }
-                        } else {
-                            // UNIFIED DIFF VIEW MODE
-                            if let Some(ref hunk) = diff_hunk {
-                                ScrollArea::vertical()
-                                    .id_salt("inline_diff_lines_scroll")
-                                    .auto_shrink([false, false])
-                                    .max_height(body_h)
-                                    .show(ui, |ui| {
-                                        for line in &hunk.lines {
-                                            let (bg, fg) = match line.tag {
-                                                '+' => (
-                                                    Color32::from_rgba_unmultiplied(
-                                                        0x1E, 0x3A, 0x24, 110,
-                                                    ),
-                                                    Color32::from_rgb(0x78, 0xE3, 0x99),
-                                                ),
-                                                '-' => (
-                                                    Color32::from_rgba_unmultiplied(
-                                                        0x46, 0x1A, 0x1E, 110,
-                                                    ),
-                                                    Color32::from_rgb(0xF0, 0x80, 0x88),
-                                                ),
-                                                _ => (Color32::TRANSPARENT, theme.text_silver),
-                                            };
-                                            Frame::none().fill(bg).show(ui, |ui| {
-                                                ui.horizontal(|ui| {
-                                                    let old_ln = line
-                                                        .old_line
+                        Frame::none()
+                            .fill(theme.code_bg)
+                            .rounding(Rounding::same(6.0))
+                            .stroke(Stroke::new(1.0, theme.border))
+                            .inner_margin(Margin::same(8.0))
+                            .show(ui, |ui| {
+                                if editor.diff_edit_mode {
+                                    // LIVE CODE EDITOR MODE
+                                    if editor.active_file_path.is_empty() {
+                                        ui.label(
+                                            egui::RichText::new(
+                                                "Chọn một file từ cột bên trái hoặc bấm nút tạo file mới (+) để bắt đầu chỉnh sửa.",
+                                            )
+                                            .color(theme.text_silver),
+                                        );
+                                    } else {
+                                        ScrollArea::vertical()
+                                            .id_salt("live_code_editor_scroll")
+                                            .auto_shrink([false, false])
+                                            .max_height(body_h)
+                                            .show(ui, |ui| {
+                                                let line_count = editor
+                                                    .file_editor_buffer
+                                                    .lines()
+                                                    .count()
+                                                    .max(1);
+                                                ui.horizontal_top(|ui| {
+                                                    let gutter: String = (1..=line_count)
                                                         .map(|n| format!("{:>4}", n))
-                                                        .unwrap_or_else(|| "    ".to_string());
-                                                    let new_ln = line
-                                                        .new_line
-                                                        .map(|n| format!("{:>4}", n))
-                                                        .unwrap_or_else(|| "    ".to_string());
+                                                        .collect::<Vec<_>>()
+                                                        .join("\n");
                                                     ui.label(
-                                                        egui::RichText::new(format!(
-                                                            "{} {} {}",
-                                                            old_ln, new_ln, line.tag
-                                                        ))
-                                                        .color(Color32::from_rgb(0x66, 0x66, 0x66))
-                                                        .monospace()
-                                                        .size(11.0),
-                                                    );
-                                                    ui.label(
-                                                        egui::RichText::new(&line.content)
-                                                            .color(fg)
+                                                        egui::RichText::new(gutter)
+                                                            .color(theme.text_silver)
                                                             .monospace()
                                                             .size(11.5),
                                                     );
+                                                    ui.add_space(8.0);
+
+                                                    let resp = ui.add(
+                                                        egui::TextEdit::multiline(
+                                                            &mut editor.file_editor_buffer,
+                                                        )
+                                                        .code_editor()
+                                                        .desired_rows(30)
+                                                        .desired_width(ui.available_width())
+                                                        .frame(false)
+                                                        .text_color(theme.text_paper),
+                                                    );
+                                                    if resp.changed() {
+                                                        editor.file_editor_dirty = true;
+                                                    }
                                                 });
                                             });
-                                        }
-                                    });
-                            } else {
-                                ui.label(
-                                    egui::RichText::new(
-                                        "Chọn một file trong danh sách GIT CHANGES hoặc WORKSPACE FILES bên trái để xem Diff hoặc sửa code trực tiếp.",
-                                    )
-                                    .color(theme.text_silver),
-                                );
-                            }
-                        }
+                                    }
+                                } else {
+                                    // UNIFIED DIFF VIEW MODE
+                                    if let Some(ref hunk) = diff_hunk {
+                                        ScrollArea::vertical()
+                                            .id_salt("inline_diff_lines_scroll")
+                                            .auto_shrink([false, false])
+                                            .max_height(body_h)
+                                            .show(ui, |ui| {
+                                                for line in &hunk.lines {
+                                                    let (bg, fg) = match line.tag {
+                                                        '+' => {
+                                                            (theme.diff_add_bg, theme.diff_add_fg)
+                                                        }
+                                                        '-' => {
+                                                            (theme.diff_del_bg, theme.diff_del_fg)
+                                                        }
+                                                        _ => {
+                                                            (Color32::TRANSPARENT, theme.text_paper)
+                                                        }
+                                                    };
+                                                    Frame::none().fill(bg).show(ui, |ui| {
+                                                        ui.horizontal(|ui| {
+                                                            let old_ln = line
+                                                                .old_line
+                                                                .map(|n| format!("{:>4}", n))
+                                                                .unwrap_or_else(|| {
+                                                                    "    ".to_string()
+                                                                });
+                                                            let new_ln = line
+                                                                .new_line
+                                                                .map(|n| format!("{:>4}", n))
+                                                                .unwrap_or_else(|| {
+                                                                    "    ".to_string()
+                                                                });
+                                                            ui.label(
+                                                                egui::RichText::new(format!(
+                                                                    "{} {} {}",
+                                                                    old_ln, new_ln, line.tag
+                                                                ))
+                                                                .color(theme.text_silver)
+                                                                .monospace()
+                                                                .size(11.0),
+                                                            );
+                                                            ui.label(
+                                                                egui::RichText::new(&line.content)
+                                                                    .color(fg)
+                                                                    .monospace()
+                                                                    .size(11.5),
+                                                            );
+                                                        });
+                                                    });
+                                                }
+                                            });
+                                    } else {
+                                        ui.label(
+                                            egui::RichText::new(
+                                                "Chọn một file bên trái để xem Diff hoặc bấm biểu tượng cây bút để sửa code trực tiếp.",
+                                            )
+                                            .color(theme.text_silver),
+                                        );
+                                    }
+                                }
+                            });
                     });
                 });
         });
@@ -679,7 +771,7 @@ pub fn render_git_diff_viewer(
     action
 }
 
-/// Phase 3: Multi-Project Workspace Manager
+/// Phase 3: Multi-Project Workspace Manager (Icon-First + Light/Dark Ready)
 pub fn render_projects_manager(
     ui: &mut Ui,
     theme: &CanhTheme,
@@ -699,7 +791,15 @@ pub fn render_projects_manager(
                 .size(13.0),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.button("✕ Quay lại Chat").clicked() {
+                if icon_btn(
+                    ui,
+                    Lucide::X,
+                    theme.text_paper,
+                    theme.chip_bg,
+                    "Quay lại Chat",
+                )
+                .clicked()
+                {
                     action = Some(StudioModalAction::CloseToChat);
                 }
             });
@@ -707,33 +807,40 @@ pub fn render_projects_manager(
 
         ui.add_space(8.0);
         Frame::none()
-            .fill(Color32::from_rgb(0x11, 0x11, 0x11))
+            .fill(theme.panel_bg)
             .rounding(Rounding::same(8.0))
             .stroke(Stroke::new(1.0, theme.border))
             .inner_margin(Margin::same(10.0))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
-                        egui::RichText::new("+ Mở hoặc thêm đường dẫn Project:")
-                            .color(theme.text_paper)
-                            .size(11.5),
+                        egui::RichText::new(Lucide::FOLDER_PLUS)
+                            .color(theme.accent_pop)
+                            .size(13.0),
                     );
-                    let w = (ui.available_width() - 120.0).max(140.0);
-                    ui.add_sized(
-                        vec2(w, 24.0),
-                        egui::TextEdit::singleline(&mut editor.new_project_path)
-                            .hint_text("/Volumes/Data/ten-du-an"),
-                    );
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                egui::RichText::new("Mở Project")
-                                    .color(Color32::BLACK)
-                                    .strong(),
-                            )
-                            .fill(theme.accent_pop),
-                        )
-                        .clicked()
+                    let w = (ui.available_width() - 42.0).max(140.0);
+                    Frame::none()
+                        .fill(theme.input_bg)
+                        .rounding(Rounding::same(5.0))
+                        .stroke(Stroke::new(1.0, theme.border))
+                        .inner_margin(Margin::symmetric(8.0, 4.0))
+                        .show(ui, |ui| {
+                            ui.add_sized(
+                                vec2(w, 20.0),
+                                egui::TextEdit::singleline(&mut editor.new_project_path)
+                                    .frame(false)
+                                    .text_color(theme.text_paper)
+                                    .hint_text("/Volumes/Data/ten-du-an"),
+                            );
+                        });
+                    if icon_btn(
+                        ui,
+                        Lucide::ARROW_RIGHT,
+                        theme.on_accent,
+                        theme.accent_pop,
+                        "Mở hoặc thêm Project này vào Workspace",
+                    )
+                    .clicked()
                     {
                         action = Some(StudioModalAction::AddNewProject(
                             editor.new_project_path.clone(),
@@ -750,9 +857,9 @@ pub fn render_projects_manager(
                     let is_active = proj.path == project_mgr.active_project;
                     Frame::none()
                         .fill(if is_active {
-                            Color32::from_rgb(0x16, 0x16, 0x16)
+                            theme.surface_2
                         } else {
-                            Color32::from_rgb(0x0E, 0x0E, 0x0E)
+                            theme.panel_bg
                         })
                         .rounding(Rounding::same(8.0))
                         .stroke(Stroke::new(
@@ -800,38 +907,46 @@ pub fn render_projects_manager(
                                 );
 
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if !is_active
-                                        && ui
-                                            .add(
-                                                egui::Button::new(
-                                                    egui::RichText::new("Chuyển sang Project này")
-                                                        .color(Color32::BLACK)
-                                                        .strong()
-                                                        .size(10.5),
-                                                )
-                                                .fill(theme.accent_pop),
-                                            )
-                                            .clicked()
-                                    {
-                                        action = Some(StudioModalAction::SwitchProject(
-                                            proj.path.clone(),
-                                        ));
-                                    } else if is_active {
+                                    if !is_active {
+                                        if icon_btn(
+                                            ui,
+                                            Lucide::FOLDER_OPEN,
+                                            theme.on_accent,
+                                            theme.accent_pop,
+                                            "Chuyển sang Project này",
+                                        )
+                                        .clicked()
+                                        {
+                                            action = Some(StudioModalAction::SwitchProject(
+                                                proj.path.clone(),
+                                            ));
+                                        }
+                                    } else {
                                         ui.label(
-                                            egui::RichText::new("● Đang mở")
-                                                .color(theme.accent_pop)
+                                            egui::RichText::new(Lucide::CHECK)
+                                                .color(theme.success)
                                                 .strong()
-                                                .size(10.5),
-                                        );
+                                                .size(12.0),
+                                        )
+                                        .on_hover_text("Project đang mở");
                                     }
 
-                                    if ui
-                                        .small_button(if proj.pinned {
-                                            "Bỏ ghim"
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::PIN,
+                                        if proj.pinned {
+                                            theme.accent_pop
                                         } else {
-                                            "Ghim"
-                                        })
-                                        .clicked()
+                                            theme.text_silver
+                                        },
+                                        theme.chip_bg,
+                                        if proj.pinned {
+                                            "Bỏ ghim Project"
+                                        } else {
+                                            "Ghim Project lên đầu"
+                                        },
+                                    )
+                                    .clicked()
                                     {
                                         action = Some(StudioModalAction::TogglePinProject(
                                             proj.path.clone(),
@@ -847,7 +962,7 @@ pub fn render_projects_manager(
     action
 }
 
-/// Phase 7: Agent & Skill Studio (Create, Edit, Delete, Preview Animated Avatars & Launch 1-1 Chat)
+/// Phase 7 & 3.1: Agent & Skill Studio + GitHub Repo Skill Importer + Trash Undo (Icon-First)
 pub fn render_agent_skill_studio(
     ui: &mut Ui,
     theme: &CanhTheme,
@@ -861,52 +976,59 @@ pub fn render_agent_skill_studio(
         ui.horizontal(|ui| {
             ui.label(
                 egui::RichText::new(format!(
-                    "{} AGENT & SKILL STUDIO — SWARM & CUSTOM SUBAGENTS",
+                    "{} AGENT & SKILL STUDIO + GITHUB IMPORTER",
                     Lucide::BOT
                 ))
                 .color(theme.accent_pop)
                 .strong()
                 .size(13.0),
             );
+            if let Some(ref notice) = editor.status_notice {
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(notice)
+                        .color(theme.success)
+                        .size(11.0),
+                );
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.button("✕ Quay lại Chat").clicked() {
+                if icon_btn(
+                    ui,
+                    Lucide::X,
+                    theme.text_paper,
+                    theme.chip_bg,
+                    "Quay lại Chat",
+                )
+                .clicked()
+                {
                     action = Some(StudioModalAction::CloseToChat);
                 }
             });
         });
 
-        ui.add_space(8.0);
+        ui.add_space(6.0);
 
-        // 1. Core Swarm Agents Gallery with 1-on-1 Dedicated Chat Button
+        // 1. Core Swarm Agents Gallery with 1-Click Chat 1-1 Icon
         Frame::none()
-            .fill(Color32::from_rgb(0x11, 0x11, 0x11))
+            .fill(theme.panel_bg)
             .rounding(Rounding::same(8.0))
             .stroke(Stroke::new(1.0, theme.border))
             .inner_margin(Margin::same(10.0))
             .show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new(
-                        "Core Swarm Agents (Click 'Chat 1-1' để mở phiên chat chuyên biệt với từng Agent):",
-                    )
-                    .color(theme.text_silver)
-                    .strong()
-                    .size(11.0),
-                );
-                ui.add_space(6.0);
                 ui.horizontal_wrapped(|ui| {
                     for &ag in ALL_AGENTS {
                         Frame::none()
-                            .fill(Color32::from_rgb(0x17, 0x17, 0x17))
+                            .fill(theme.surface_1)
                             .rounding(Rounding::same(8.0))
-                            .stroke(Stroke::new(1.0, Color32::from_rgb(0x22, 0x22, 0x22)))
-                            .inner_margin(Margin::symmetric(10.0, 6.0))
+                            .stroke(Stroke::new(1.0, theme.border))
+                            .inner_margin(Margin::symmetric(8.0, 5.0))
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     AvatarManager::render_animated_avatar(
                                         ui,
                                         ag,
                                         AgentAvatarState::Answering,
-                                        30.0,
+                                        26.0,
                                         elapsed_secs,
                                         theme.accent_pop,
                                     );
@@ -919,200 +1041,459 @@ pub fn render_agent_skill_studio(
                                             ))
                                             .color(theme.accent_pop)
                                             .strong()
-                                            .size(11.0),
+                                            .size(10.8),
                                         );
                                         ui.label(
                                             egui::RichText::new(ag.title())
-                                                .color(theme.text_paper)
-                                                .size(10.0),
+                                                .color(theme.text_silver)
+                                                .size(9.5),
                                         );
-                                        if ui
-                                            .add(
-                                                egui::Button::new(
-                                                    egui::RichText::new(format!(
-                                                        "{} Chat 1-1",
-                                                        Lucide::MESSAGE_SQUARE
-                                                    ))
-                                                    .color(Color32::BLACK)
-                                                    .strong()
-                                                    .size(9.5),
-                                                )
-                                                .fill(theme.accent_pop)
-                                                .rounding(Rounding::same(4.0)),
-                                            )
-                                            .clicked()
-                                        {
-                                            action = Some(
-                                                StudioModalAction::OpenDedicatedAgentChat(
-                                                    ag.name().to_string(),
-                                                ),
-                                            );
-                                        }
                                     });
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::MESSAGE_SQUARE,
+                                        Color32::WHITE,
+                                        theme.success,
+                                        &format!("Mở Chat 1-1 riêng với {}", ag.name()),
+                                    )
+                                    .clicked()
+                                    {
+                                        action = Some(StudioModalAction::OpenDedicatedAgentChat(
+                                            ag.name().to_string(),
+                                        ));
+                                    }
                                 });
                             });
                     }
                 });
             });
 
-        ui.add_space(10.0);
+        ui.add_space(8.0);
 
-        // 2. Editor Form to Create / Update Skill or Custom Agent
+        // 2. Studio Action Tabs: [Wand Skill] | [Bot Subagent] | [CloudDownload GitHub Import]
         Frame::none()
-            .fill(Color32::from_rgb(0x11, 0x11, 0x11))
+            .fill(theme.panel_bg)
             .rounding(Rounding::same(8.0))
             .stroke(Stroke::new(1.0, theme.border))
             .inner_margin(Margin::same(10.0))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(
-                            !editor.is_editing_agent,
-                            format!("{} Tạo / Sửa Skill (SKILL.md)", Lucide::CODE),
-                        )
-                        .clicked()
-                    {
-                        editor.is_editing_agent = false;
+                    for (t_idx, ic, lbl) in [
+                        (0, Lucide::WAND, "Skill (SKILL.md)"),
+                        (1, Lucide::BOT, "Subagent (.md)"),
+                        (2, Lucide::CLOUD_DOWNLOAD, "GitHub Skill Importer"),
+                    ] {
+                        let is_sel = editor.studio_tab == t_idx;
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(format!("{} {}", ic, lbl))
+                                        .color(if is_sel {
+                                            theme.on_accent
+                                        } else {
+                                            theme.text_paper
+                                        })
+                                        .strong()
+                                        .size(10.8),
+                                )
+                                .fill(if is_sel {
+                                    theme.accent_pop
+                                } else {
+                                    theme.chip_bg
+                                })
+                                .rounding(Rounding::same(5.0)),
+                            )
+                            .clicked()
+                        {
+                            editor.studio_tab = t_idx;
+                        }
                     }
-                    if ui
-                        .selectable_label(
-                            editor.is_editing_agent,
-                            format!("{} Tạo / Sửa Subagent (.claude/agents/*.md)", Lucide::BOT),
-                        )
-                        .clicked()
-                    {
-                        editor.is_editing_agent = true;
-                    }
+
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        // Scope Toggle: Project vs Global
+                        for sc in [SkillScope::Project, SkillScope::Global] {
+                            let is_sc = editor.selected_scope == sc;
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new(sc.label())
+                                            .color(if is_sc {
+                                                theme.on_accent
+                                            } else {
+                                                theme.text_silver
+                                            })
+                                            .size(10.0),
+                                    )
+                                    .fill(if is_sc {
+                                        theme.info
+                                    } else {
+                                        theme.chip_bg
+                                    })
+                                    .rounding(Rounding::same(4.0)),
+                                )
+                                .on_hover_text("Chọn phạm vi lưu: Project hoặc Global")
+                                .clicked()
+                            {
+                                editor.selected_scope = sc;
+                            }
+                        }
+                    });
                 });
+
                 ui.add_space(6.0);
 
-                if !editor.is_editing_agent {
-                    ui.horizontal(|ui| {
-                        ui.label("Tên Skill:");
-                        ui.add_sized(
-                            vec2(180.0, 22.0),
-                            egui::TextEdit::singleline(&mut editor.skill_name),
-                        );
-                        ui.label("Mô tả:");
-                        ui.add_sized(
-                            vec2(260.0, 22.0),
-                            egui::TextEdit::singleline(&mut editor.skill_desc),
-                        );
-                    });
-                    ui.add_space(4.0);
-                    ui.add(
-                        egui::TextEdit::multiline(&mut editor.skill_body)
-                            .desired_rows(3)
-                            .desired_width(ui.available_width())
-                            .hint_text("Nội dung hướng dẫn SKILL.md..."),
-                    );
-                    ui.add_space(4.0);
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                egui::RichText::new(format!(
-                                    "{} Lưu Skill vào Project",
-                                    Lucide::SAVE
-                                ))
-                                .color(Color32::BLACK)
-                                .strong(),
+                match editor.studio_tab {
+                    0 => {
+                        // CREATE / EDIT SKILL
+                        ui.horizontal(|ui| {
+                            ui.label("Name:");
+                            ui.add_sized(
+                                vec2(170.0, 22.0),
+                                egui::TextEdit::singleline(&mut editor.skill_name),
+                            );
+                            ui.label("Desc:");
+                            ui.add_sized(
+                                vec2(260.0, 22.0),
+                                egui::TextEdit::singleline(&mut editor.skill_desc),
+                            );
+                            if icon_btn(
+                                ui,
+                                Lucide::SAVE,
+                                theme.on_accent,
+                                theme.accent_pop,
+                                "Lưu Skill (SKILL.md)",
                             )
-                            .fill(theme.accent_pop),
-                        )
-                        .clicked()
-                    {
-                        action = Some(StudioModalAction::SaveSkill {
-                            name: editor.skill_name.clone(),
-                            desc: editor.skill_desc.clone(),
-                            body: editor.skill_body.clone(),
+                            .clicked()
+                            {
+                                action = Some(StudioModalAction::SaveSkill {
+                                    name: editor.skill_name.clone(),
+                                    desc: editor.skill_desc.clone(),
+                                    body: editor.skill_body.clone(),
+                                    scope: editor.selected_scope,
+                                });
+                            }
                         });
+                        ui.add_space(4.0);
+                        ui.add(
+                            egui::TextEdit::multiline(&mut editor.skill_body)
+                                .desired_rows(3)
+                                .desired_width(ui.available_width())
+                                .hint_text("Nội dung hướng dẫn SKILL.md..."),
+                        );
                     }
-                } else {
-                    ui.horizontal(|ui| {
-                        ui.label("Tên Agent:");
-                        ui.add_sized(
-                            vec2(180.0, 22.0),
-                            egui::TextEdit::singleline(&mut editor.agent_name),
-                        );
-                        ui.label("Vai trò (Role):");
-                        ui.add_sized(
-                            vec2(260.0, 22.0),
-                            egui::TextEdit::singleline(&mut editor.agent_role),
-                        );
-                    });
-                    ui.add_space(4.0);
-                    ui.add(
-                        egui::TextEdit::multiline(&mut editor.agent_prompt)
-                            .desired_rows(3)
-                            .desired_width(ui.available_width())
-                            .hint_text("System prompt & quy tắc của Subagent..."),
-                    );
-                    ui.add_space(4.0);
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                egui::RichText::new(format!(
-                                    "{} Lưu Subagent vào Project",
-                                    Lucide::SAVE
-                                ))
-                                .color(Color32::BLACK)
-                                .strong(),
+                    1 => {
+                        // CREATE / EDIT SUBAGENT
+                        ui.horizontal(|ui| {
+                            ui.label("Agent:");
+                            ui.add_sized(
+                                vec2(170.0, 22.0),
+                                egui::TextEdit::singleline(&mut editor.agent_name),
+                            );
+                            ui.label("Role:");
+                            ui.add_sized(
+                                vec2(260.0, 22.0),
+                                egui::TextEdit::singleline(&mut editor.agent_role),
+                            );
+                            if icon_btn(
+                                ui,
+                                Lucide::SAVE,
+                                theme.on_accent,
+                                theme.accent_pop,
+                                "Lưu Subagent (.claude/agents/*.md)",
                             )
-                            .fill(theme.accent_pop),
-                        )
-                        .clicked()
-                    {
-                        action = Some(StudioModalAction::SaveAgent {
-                            name: editor.agent_name.clone(),
-                            role: editor.agent_role.clone(),
-                            prompt: editor.agent_prompt.clone(),
+                            .clicked()
+                            {
+                                action = Some(StudioModalAction::SaveAgent {
+                                    name: editor.agent_name.clone(),
+                                    role: editor.agent_role.clone(),
+                                    prompt: editor.agent_prompt.clone(),
+                                    scope: editor.selected_scope,
+                                });
+                            }
                         });
+                        ui.add_space(4.0);
+                        ui.add(
+                            egui::TextEdit::multiline(&mut editor.agent_prompt)
+                                .desired_rows(3)
+                                .desired_width(ui.available_width())
+                                .hint_text("System prompt & quy tắc của Subagent..."),
+                        );
+                    }
+                    _ => {
+                        // GITHUB REPOSITORY SKILL IMPORTER
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(Lucide::GLOBE)
+                                    .color(theme.info)
+                                    .size(12.0),
+                            );
+                            ui.add_sized(
+                                vec2(260.0, 22.0),
+                                egui::TextEdit::singleline(&mut editor.github_repo_url)
+                                    .hint_text("owner/repo hoặc https://github.com/..."),
+                            );
+                            ui.add_sized(
+                                vec2(90.0, 22.0),
+                                egui::TextEdit::singleline(&mut editor.github_branch)
+                                    .hint_text("branch (opt)"),
+                            );
+                            if icon_btn(
+                                ui,
+                                Lucide::SEARCH,
+                                theme.on_accent,
+                                theme.accent_pop,
+                                "Quét các SKILL.md trong GitHub Repository này",
+                            )
+                            .clicked()
+                            {
+                                action = Some(StudioModalAction::ScanGitHubRepo {
+                                    url: editor.github_repo_url.clone(),
+                                    branch: editor.github_branch.clone(),
+                                });
+                            }
+
+                            // Conflict strategy cycle button
+                            let next_strat = match editor.import_conflict_strategy {
+                                ConflictStrategy::Overwrite => ConflictStrategy::Rename,
+                                ConflictStrategy::Rename => ConflictStrategy::Skip,
+                                ConflictStrategy::Skip => ConflictStrategy::Overwrite,
+                            };
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new(
+                                            editor.import_conflict_strategy.label(),
+                                        )
+                                        .color(theme.text_silver)
+                                        .size(10.0),
+                                    )
+                                    .fill(theme.chip_bg),
+                                )
+                                .on_hover_text("Click để đổi chiến lược xử lý khi trùng tên Skill")
+                                .clicked()
+                            {
+                                editor.import_conflict_strategy = next_strat;
+                            }
+                        });
+
+                        if let Some((ref prog_msg, pct)) = editor.import_progress {
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(prog_msg)
+                                        .color(theme.accent_pop)
+                                        .size(10.5),
+                                );
+                                ui.label(
+                                    egui::RichText::new(format!("{:.0}%", pct * 100.0))
+                                        .color(theme.text_silver)
+                                        .size(10.0),
+                                );
+                            });
+                        }
+
+                        if let Some(ref mut scan) = editor.scan_result {
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "Tìm thấy {} skills trong {} (@{}):",
+                                        scan.candidates.len(),
+                                        scan.source.repo_slug(),
+                                        &scan.commit_sha[..7.min(scan.commit_sha.len())]
+                                    ))
+                                    .color(theme.success)
+                                    .strong()
+                                    .size(10.8),
+                                );
+                                if icon_btn(
+                                    ui,
+                                    Lucide::CLOUD_DOWNLOAD,
+                                    theme.on_accent,
+                                    theme.success,
+                                    "Cài đặt các Skills đã chọn",
+                                )
+                                .clicked()
+                                {
+                                    action = Some(StudioModalAction::InstallScannedSkills);
+                                }
+                            });
+                            ScrollArea::vertical()
+                                .id_salt("github_scan_candidates_scroll")
+                                .max_height(90.0)
+                                .show(ui, |ui| {
+                                    for cand in &mut scan.candidates {
+                                        ui.horizontal(|ui| {
+                                            ui.checkbox(&mut cand.selected, "");
+                                            ui.label(
+                                                egui::RichText::new(format!("${}", cand.name))
+                                                    .color(theme.text_paper)
+                                                    .strong()
+                                                    .size(10.5),
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "({} files) — {}",
+                                                    cand.file_count, cand.description
+                                                ))
+                                                .color(theme.text_silver)
+                                                .size(10.0),
+                                            );
+                                        });
+                                    }
+                                });
+                        }
                     }
                 }
             });
 
         ui.add_space(8.0);
 
-        // 3. Discovered Skills & Agents List
+        // 3. Discovered Skills, Custom Subagents & Trash Undo List (Icon-First)
         ScrollArea::vertical()
             .id_salt("studio_discovered_list_scroll")
             .show(ui, |ui| {
+                // Trash Restore Banner if any item was recently deleted
+                if !editor.trashed_items.is_empty() {
+                    Frame::none()
+                        .fill(theme.surface_1)
+                        .rounding(Rounding::same(6.0))
+                        .stroke(Stroke::new(1.0, theme.warning))
+                        .inner_margin(Margin::symmetric(8.0, 4.0))
+                        .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{} Trash ({}):",
+                                        Lucide::ARCHIVE,
+                                        editor.trashed_items.len()
+                                    ))
+                                    .color(theme.warning)
+                                    .strong()
+                                    .size(10.5),
+                                );
+                                for (t_idx, item) in editor.trashed_items.iter().enumerate() {
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                egui::RichText::new(format!(
+                                                    "{} Khôi phục {} '{}'",
+                                                    Lucide::ROTATE_CCW,
+                                                    item.kind_label,
+                                                    item.name
+                                                ))
+                                                .color(theme.text_paper)
+                                                .size(10.0),
+                                            )
+                                            .fill(theme.chip_bg),
+                                        )
+                                        .clicked()
+                                    {
+                                        action = Some(StudioModalAction::RestoreTrashed(t_idx));
+                                    }
+                                }
+                            });
+                        });
+                    ui.add_space(6.0);
+                }
+
                 ui.label(
                     egui::RichText::new(format!(
-                        "Danh sách Skills trong Project ({})",
+                        "SKILLS ({})",
                         skills.len()
                     ))
                     .color(theme.accent_pop)
                     .strong()
-                    .size(11.5),
+                    .size(11.0),
                 );
                 for sk in skills {
                     ui.horizontal(|ui| {
+                        let mut en = sk.enabled;
+                        if ui
+                            .checkbox(&mut en, "")
+                            .on_hover_text("Bật / Tắt Skill này")
+                            .changed()
+                        {
+                            action = Some(StudioModalAction::ToggleSkillEnabled {
+                                path: sk.path.clone(),
+                                enabled: en,
+                            });
+                        }
                         ui.label(
-                            egui::RichText::new(format!("{} ${}", Lucide::CODE, sk.name))
-                                .color(theme.text_paper)
-                                .strong(),
+                            egui::RichText::new(format!("{} ${}", Lucide::WAND, sk.name))
+                                .color(if sk.enabled {
+                                    theme.text_paper
+                                } else {
+                                    theme.text_silver
+                                })
+                                .strong()
+                                .size(11.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!("[{}]", sk.scope.label()))
+                                .color(theme.info)
+                                .size(9.5),
                         );
                         ui.label(
                             egui::RichText::new(&sk.description)
                                 .color(theme.text_silver)
-                                .size(11.0),
+                                .size(10.5),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.small_button(Lucide::TRASH).clicked() {
+                            if icon_btn(
+                                ui,
+                                Lucide::TRASH,
+                                theme.danger,
+                                Color32::TRANSPARENT,
+                                "Chuyển Skill này vào Thùng rác (Có thể Undo)",
+                            )
+                            .clicked()
+                            {
                                 action = Some(StudioModalAction::DeleteSkill(sk.path.clone()));
                             }
-                            if ui.small_button("Sửa").clicked() {
-                                editor.is_editing_agent = false;
+                            if let Some(ref src) = sk.source {
+                                if icon_btn(
+                                    ui,
+                                    Lucide::REFRESH,
+                                    theme.info,
+                                    theme.chip_bg,
+                                    &format!("Cập nhật Skill từ GitHub ({})", src.repo),
+                                )
+                                .clicked()
+                                {
+                                    action = Some(StudioModalAction::UpdateSkillFromSource {
+                                        path: sk.path.clone(),
+                                        source: src.clone(),
+                                    });
+                                }
+                            }
+                            if icon_btn(
+                                ui,
+                                Lucide::EDIT,
+                                theme.text_silver,
+                                theme.chip_bg,
+                                "Chỉnh sửa nội dung Skill",
+                            )
+                            .clicked()
+                            {
+                                editor.studio_tab = 0;
+                                editor.selected_scope = sk.scope;
                                 editor.skill_name = sk.name.clone();
                                 editor.skill_desc = sk.description.clone();
-                                editor.skill_body = sk.content.clone();
+                                editor.skill_body = sk.body.clone();
                             }
-                            if ui.small_button("Dùng trong Chat").clicked() {
-                                action = Some(StudioModalAction::InsertSkillIntoChat(format!(
-                                    "${} ",
-                                    sk.name
-                                )));
+                            if icon_btn(
+                                ui,
+                                Lucide::MESSAGE_SQUARE,
+                                theme.on_accent,
+                                theme.accent_pop,
+                                "Đính kèm Skill này vào phiên Chat",
+                            )
+                            .clicked()
+                            {
+                                action = Some(StudioModalAction::InsertSkillIntoChat(
+                                    sk.name.clone(),
+                                ));
                             }
                         });
                     });
@@ -1120,47 +1501,64 @@ pub fn render_agent_skill_studio(
 
                 ui.add_space(8.0);
                 ui.label(
-                    egui::RichText::new(format!("Danh sách Custom Subagents ({})", agents.len()))
-                        .color(theme.accent_pop)
+                    egui::RichText::new(format!("CUSTOM SUBAGENTS ({})", agents.len()))
+                        .color(theme.info)
                         .strong()
-                        .size(11.5),
+                        .size(11.0),
                 );
                 for ag in agents {
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new(format!("{} @{}", Lucide::BOT, ag.name))
                                 .color(theme.text_paper)
-                                .strong(),
+                                .strong()
+                                .size(11.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!("[{}]", ag.scope.label()))
+                                .color(theme.info)
+                                .size(9.5),
                         );
                         ui.label(
                             egui::RichText::new(&ag.role)
                                 .color(theme.text_silver)
-                                .size(11.0),
+                                .size(10.5),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.small_button(Lucide::TRASH).clicked() {
+                            if icon_btn(
+                                ui,
+                                Lucide::TRASH,
+                                theme.danger,
+                                Color32::TRANSPARENT,
+                                "Xóa Subagent này (Có thể Undo)",
+                            )
+                            .clicked()
+                            {
                                 action = Some(StudioModalAction::DeleteAgent(ag.path.clone()));
                             }
-                            if ui.small_button("Sửa").clicked() {
-                                editor.is_editing_agent = true;
+                            if icon_btn(
+                                ui,
+                                Lucide::EDIT,
+                                theme.text_silver,
+                                theme.chip_bg,
+                                "Chỉnh sửa System Prompt của Subagent",
+                            )
+                            .clicked()
+                            {
+                                editor.studio_tab = 1;
+                                editor.selected_scope = ag.scope;
                                 editor.agent_name = ag.name.clone();
                                 editor.agent_role = ag.role.clone();
-                                editor.agent_prompt = ag.content.clone();
+                                editor.agent_prompt = ag.body.clone();
                             }
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new(format!(
-                                            "{} Chat 1-1",
-                                            Lucide::MESSAGE_SQUARE
-                                        ))
-                                        .color(Color32::BLACK)
-                                        .strong()
-                                        .size(10.0),
-                                    )
-                                    .fill(theme.accent_pop),
-                                )
-                                .clicked()
+                            if icon_btn(
+                                ui,
+                                Lucide::MESSAGE_SQUARE,
+                                Color32::WHITE,
+                                theme.info,
+                                &format!("Mở Chat 1-1 riêng với @{}", ag.name),
+                            )
+                            .clicked()
                             {
                                 action = Some(StudioModalAction::OpenDedicatedAgentChat(
                                     ag.name.clone(),
@@ -1174,7 +1572,7 @@ pub fn render_agent_skill_studio(
     action
 }
 
-/// Phase 12: Settings, Memory Reaper & 12 Canh Giờ Palette Switcher
+/// Phase 12 & Phase 2: Settings, Light/Dark Mode Switcher & Elegans Diagnostics
 pub fn render_settings_modal(
     ui: &mut Ui,
     theme: &CanhTheme,
@@ -1187,7 +1585,7 @@ pub fn render_settings_modal(
         ui.horizontal(|ui| {
             ui.label(
                 egui::RichText::new(format!(
-                    "{} VICTINI SETTINGS, MEMORY REAPER & 12 CANH GIỜ",
+                    "{} VICTINI SETTINGS, LIGHT/DARK MODE & DIAGNOSTICS",
                     Lucide::SETTINGS
                 ))
                 .color(theme.accent_pop)
@@ -1195,7 +1593,15 @@ pub fn render_settings_modal(
                 .size(13.0),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.button("✕ Quay lại Chat").clicked() {
+                if icon_btn(
+                    ui,
+                    Lucide::X,
+                    theme.text_paper,
+                    theme.chip_bg,
+                    "Quay lại Chat",
+                )
+                .clicked()
+                {
                     action = Some(StudioModalAction::CloseToChat);
                 }
             });
@@ -1203,24 +1609,68 @@ pub fn render_settings_modal(
 
         ui.add_space(10.0);
         Frame::none()
-            .fill(Color32::from_rgb(0x11, 0x11, 0x11))
+            .fill(theme.panel_bg)
             .rounding(Rounding::same(8.0))
             .stroke(Stroke::new(1.0, theme.border))
             .inner_margin(Margin::same(12.0))
             .show(ui, |ui| {
                 ui.label(
-                    egui::RichText::new("1. Memory Reaper & Background Idle Scheduler")
+                    egui::RichText::new("1. Giao diện T3 Code OLED Dark & Paper Light Mode (⌘L)")
+                        .color(theme.text_paper)
+                        .strong(),
+                );
+                ui.checkbox(
+                    &mut layout.auto_canh_gio,
+                    "Tự động chuyển Light Mode (07:00–18:00) / Dark Mode (18:00–07:00) theo giờ hệ thống",
+                );
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    for t in CanhTheme::all_themes() {
+                        let is_cur = t.id == theme.id;
+                        let ic = if t.is_dark { Lucide::MOON } else { Lucide::SUN };
+                        let btn = egui::Button::new(
+                            egui::RichText::new(format!("{} {}", ic, t.name))
+                                .color(if is_cur {
+                                    theme.on_accent
+                                } else {
+                                    theme.text_paper
+                                })
+                                .strong()
+                                .size(11.0),
+                        )
+                        .fill(if is_cur {
+                            theme.accent_pop
+                        } else {
+                            theme.chip_bg
+                        })
+                        .rounding(Rounding::same(6.0));
+
+                        if ui.add(btn).clicked() {
+                            layout.auto_canh_gio = false;
+                            action = Some(StudioModalAction::SelectTheme(t));
+                        }
+                    }
+                });
+            });
+
+        ui.add_space(10.0);
+        Frame::none()
+            .fill(theme.panel_bg)
+            .rounding(Rounding::same(8.0))
+            .stroke(Stroke::new(1.0, theme.border))
+            .inner_margin(Margin::same(12.0))
+            .show(ui, |ui| {
+                ui.label(
+                    egui::RichText::new("2. Memory Reaper & Background Idle Scheduler")
                         .color(theme.text_paper)
                         .strong(),
                 );
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.label(
-                        "Thời gian chờ trước khi đưa IDE về trạng thái Ngủ (giảm RAM < 45MB):",
-                    );
+                    ui.label("Thời gian chờ trước khi đưa IDE về trạng thái Ngủ:");
                     let mut secs = reaper.idle_threshold_secs as u32;
                     if ui
-                        .add(egui::Slider::new(&mut secs, 10..=180).suffix(" giây"))
+                        .add(egui::Slider::new(&mut secs, 10..=180).suffix("s"))
                         .changed()
                     {
                         reaper.idle_threshold_secs = secs as u64;
@@ -1239,48 +1689,32 @@ pub fn render_settings_modal(
 
         ui.add_space(10.0);
         Frame::none()
-            .fill(Color32::from_rgb(0x11, 0x11, 0x11))
+            .fill(theme.panel_bg)
             .rounding(Rounding::same(8.0))
             .stroke(Stroke::new(1.0, theme.border))
             .inner_margin(Margin::same(12.0))
             .show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new("2. Bảng Màu 12 Canh Giờ & T3 Code OLED")
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(
+                            "3. Chẩn đoán bảo mật Elegans (Env Secret Guard & AST Blast Radius)",
+                        )
                         .color(theme.text_paper)
                         .strong(),
-                );
-                ui.checkbox(
-                    &mut layout.auto_canh_gio,
-                    "Tự động đổi màu theo giờ hệ thống thực tế",
-                );
-                ui.add_space(6.0);
-                ui.horizontal_wrapped(|ui| {
-                    for t in CanhTheme::all_themes() {
-                        let is_cur = t.id == theme.id;
-                        let btn = egui::Button::new(
-                            egui::RichText::new(t.name)
-                                .color(if is_cur {
-                                    Color32::BLACK
-                                } else {
-                                    t.text_paper
-                                })
-                                .size(11.0),
-                        )
-                        .fill(if is_cur { t.accent_pop } else { t.panel_bg });
-
-                        if ui.add(btn).clicked() {
-                            layout.auto_canh_gio = false;
-                            action = Some(StudioModalAction::SelectTheme(t));
-                        }
+                    );
+                    if icon_btn(
+                        ui,
+                        Lucide::SHIELD,
+                        theme.on_accent,
+                        theme.accent_pop,
+                        "Chạy quét bảo mật & phân tích phụ thuộc ngay",
+                    )
+                    .clicked()
+                    {
+                        action = Some(StudioModalAction::RunSecurityDiagnostics);
                     }
                 });
             });
-
-        ui.add_space(10.0);
-        if ui.button("Quay về màn hình Chat chính").clicked() {
-            layout.center_mode = CenterViewMode::ChatTimeline;
-            action = Some(StudioModalAction::CloseToChat);
-        }
     });
     action
 }

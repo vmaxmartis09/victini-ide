@@ -5,7 +5,7 @@ use crate::ai::{
 use crate::config::{DiscoveredAgent, DiscoveredSkill};
 use crate::theme::{CanhTheme, Lucide};
 use egui::{
-    vec2, Align, Color32, Frame, Id, Layout, Margin, Rounding, ScrollArea, Sense, Stroke, Ui,
+    vec2, Align, Color32, Frame, Id, Layout, Margin, Rect, Rounding, ScrollArea, Sense, Stroke, Ui,
 };
 use std::collections::HashMap;
 use std::time::Instant;
@@ -128,11 +128,16 @@ pub struct KanbanComposerState {
     pub selected_task_id: Option<String>,
     pub drawer_draft: Option<KanbanDrawerDraft>,
 
+    // Custom Drag & Drop state (avoids egui::dnd_drop_zone white background & horizontal layout bug)
+    pub dragging_task_id: Option<String>,
+
     // Delete confirmation (card menu) & 5s Undo Toast
     pub confirm_delete_card_id: Option<String>,
     pub undo_deleted: Option<(AgentTaskCard, Instant)>,
 
-    // Legacy compatibility field
+    // Geometry telemetry for layout unit tests
+    pub last_column_rects: Vec<Rect>,
+    pub last_card_rects: Vec<(String, Rect)>,
     pub expanded_task_id: Option<String>,
 }
 
@@ -158,8 +163,11 @@ impl Default for KanbanComposerState {
             compact_collapsed: HashMap::new(),
             selected_task_id: None,
             drawer_draft: None,
+            dragging_task_id: None,
             confirm_delete_card_id: None,
             undo_deleted: None,
+            last_column_rects: Vec::new(),
+            last_card_rects: Vec::new(),
             expanded_task_id: None,
         }
     }
@@ -262,6 +270,8 @@ pub fn render_agent_kanban_view(
     current_branch: &str,
 ) -> Option<KanbanAction> {
     let mut action: Option<KanbanAction> = None;
+    composer.last_column_rects.clear();
+    composer.last_card_rects.clear();
 
     // Expire 5-second undo toast
     if let Some((_, ts)) = &composer.undo_deleted {
@@ -360,7 +370,7 @@ pub fn render_agent_kanban_view(
                                 .add(
                                     egui::Button::new(
                                         egui::RichText::new(format!("{} Hoàn tác", Lucide::UNDO))
-                                            .color(Color32::BLACK)
+                                            .color(theme.text_on_accent())
                                             .strong()
                                             .size(10.5),
                                     )
@@ -384,7 +394,7 @@ pub fn render_agent_kanban_view(
         let total_w = ui.available_width();
         let drawer_open = composer.selected_task_id.is_some();
         let drawer_w = if drawer_open {
-            (total_w * 0.36).clamp(320.0, 410.0)
+            (total_w * 0.35).clamp(320.0, 410.0)
         } else {
             0.0
         };
@@ -392,12 +402,12 @@ pub fn render_agent_kanban_view(
         let board_h = (ui.available_height() - 4.0).max(240.0);
 
         ui.horizontal_top(|ui| {
-            // Left: Kanban Board (either Compact Vertical or 4-Column DnD Board)
+            // Left: Kanban Board (either Compact Vertical or 4-Column Board)
             ui.allocate_ui_with_layout(
                 vec2(board_w, board_h),
                 Layout::top_down(Align::Min),
                 |ui| {
-                    if board_w < 820.0 {
+                    if board_w < 780.0 {
                         if let Some(act) = render_compact_board(
                             ui,
                             theme,
@@ -450,6 +460,29 @@ pub fn render_agent_kanban_view(
         });
     });
 
+    // Clear dragging state when pointer is released
+    if composer.dragging_task_id.is_some() {
+        let pointer_down = ui.input(|i| i.pointer.any_down());
+        if let Some(ref drag_id) = composer.dragging_task_id {
+            egui::show_tooltip_at_pointer(
+                ui.ctx(),
+                egui::LayerId::new(egui::Order::Tooltip, Id::new("kanban_drag_badge")),
+                Id::new("kanban_drag_preview"),
+                |ui| {
+                    ui.label(
+                        egui::RichText::new(format!("{} Đang kéo {}", Lucide::KANBAN, drag_id))
+                            .color(theme.accent_pop)
+                            .strong()
+                            .size(11.0),
+                    );
+                },
+            );
+        }
+        if !pointer_down {
+            composer.dragging_task_id = None;
+        }
+    }
+
     // 3. CREATE TASK MODAL
     if composer.show_create_modal {
         if let Some(act) = render_create_task_modal(
@@ -482,7 +515,7 @@ fn render_top_bar(
         .fill(theme.surface_1)
         .rounding(Rounding::same(8.0))
         .stroke(Stroke::new(1.0, theme.border))
-        .inner_margin(Margin::symmetric(10.0, 7.0))
+        .inner_margin(Margin::symmetric(12.0, 8.0))
         .show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 // Title + Running counter
@@ -490,7 +523,7 @@ fn render_top_bar(
                     egui::RichText::new(format!("{} Swarm Kanban", Lucide::KANBAN))
                         .color(theme.text_paper)
                         .strong()
-                        .size(13.0),
+                        .size(13.5),
                 );
                 if running_count > 0 {
                     Frame::none()
@@ -502,7 +535,7 @@ fn render_top_bar(
                                 egui::RichText::new(format!("{} đang chạy", running_count))
                                     .color(theme.accent_pop)
                                     .strong()
-                                    .size(10.0),
+                                    .size(10.5),
                             );
                         });
                 }
@@ -511,10 +544,10 @@ fn render_top_bar(
 
                 // Search Box
                 Frame::none()
-                    .fill(theme.bg_field)
+                    .fill(theme.input_bg)
                     .rounding(Rounding::same(6.0))
                     .stroke(Stroke::new(1.0, theme.border_strong))
-                    .inner_margin(Margin::symmetric(7.0, 3.0))
+                    .inner_margin(Margin::symmetric(8.0, 3.0))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.label(
@@ -523,7 +556,7 @@ fn render_top_bar(
                                     .size(11.0),
                             );
                             ui.add_sized(
-                                vec2(130.0, 18.0),
+                                vec2(140.0, 18.0),
                                 egui::TextEdit::singleline(&mut composer.search_query)
                                     .hint_text("Tìm task...")
                                     .frame(false)
@@ -546,32 +579,40 @@ fn render_top_bar(
                         });
                     });
 
-                // Agent Filter ComboBox
+                // Agent Filter Menu Button (consistent warm surface, no OS ComboBox white glitch)
                 let current_ag_label = composer
                     .filter_agent
                     .as_deref()
                     .unwrap_or("Tất cả Agent");
-                egui::ComboBox::from_id_salt("kanban_filter_agent")
-                    .selected_text(
-                        egui::RichText::new(format!("{} {}", Lucide::BOT, current_ag_label))
-                            .size(10.5),
-                    )
-                    .width(120.0)
-                    .show_ui(ui, |ui| {
+                ui.menu_button(
+                    egui::RichText::new(format!(
+                        "{} {} {}",
+                        Lucide::BOT,
+                        current_ag_label,
+                        Lucide::CHEVRON_DOWN
+                    ))
+                    .color(theme.text_paper)
+                    .size(10.8),
+                    |ui| {
                         if ui
                             .selectable_label(composer.filter_agent.is_none(), "Tất cả Agent")
                             .clicked()
                         {
                             composer.filter_agent = None;
+                            ui.close_menu();
                         }
                         ui.separator();
                         for &ag in ALL_AGENTS {
                             let selected = composer.filter_agent.as_deref() == Some(ag.name());
                             if ui
-                                .selectable_label(selected, format!("{} {}", ag.icon(), ag.name()))
+                                .selectable_label(
+                                    selected,
+                                    format!("{} {} — {}", ag.icon(), ag.name(), ag.title()),
+                                )
                                 .clicked()
                             {
                                 composer.filter_agent = Some(ag.name().to_string());
+                                ui.close_menu();
                             }
                         }
                         if !custom_agents.is_empty() {
@@ -584,14 +625,16 @@ fn render_top_bar(
                                     .clicked()
                                 {
                                     composer.filter_agent = Some(cag.name.clone());
+                                    ui.close_menu();
                                 }
                             }
                         }
-                    });
+                    },
+                );
 
                 // Priority Filter Pills
                 for prio in [None, Some("P0"), Some("P1"), Some("P2")] {
-                    let label = prio.unwrap_or("All");
+                    let label = prio.unwrap_or("Tất cả");
                     let is_sel = composer.filter_priority.as_deref() == prio;
                     let fill = if is_sel {
                         theme.surface_3
@@ -616,7 +659,7 @@ fn render_top_bar(
                                         Color32::TRANSPARENT
                                     },
                                 ))
-                                .rounding(Rounding::same(4.0)),
+                                .rounding(Rounding::same(5.0)),
                         )
                         .clicked()
                     {
@@ -627,11 +670,11 @@ fn render_top_bar(
                 // Auto-run Idle Toggle
                 ui.checkbox(
                     &mut kanban.auto_run_backlog_on_idle,
-                    egui::RichText::new(format!("{} Auto-run rảnh", Lucide::CLOCK))
+                    egui::RichText::new(format!("{} Tự chạy khi rảnh", Lucide::CLOCK))
                         .color(theme.text_silver)
                         .size(10.5),
                 )
-                .on_hover_text("Tự động chạy 1 task Backlog (có bật Auto-run) khi IDE rảnh > 30s");
+                .on_hover_text("Tự động chạy 1 task Backlog (có bật Tự chạy) khi IDE rảnh > 30s");
 
                 // Right-aligned Primary Action Button
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -639,12 +682,12 @@ fn render_top_bar(
                         .add(
                             egui::Button::new(
                                 egui::RichText::new(format!("{} Task mới", Lucide::PLUS))
-                                    .color(Color32::BLACK)
+                                    .color(theme.text_on_accent())
                                     .strong()
                                     .size(11.0),
                             )
                             .fill(theme.accent_pop)
-                            .rounding(Rounding::same(5.0)),
+                            .rounding(Rounding::same(6.0)),
                         )
                         .on_hover_text("Tạo task mới (⌘N)")
                         .clicked()
@@ -674,13 +717,20 @@ fn render_four_column_board(
     board_h: f32,
 ) -> Option<KanbanAction> {
     let mut action: Option<KanbanAction> = None;
-    let col_width = ((board_w - 30.0) / 4.0).max(225.0);
+    let gap = 8.0;
+    let col_width = ((board_w - gap * 3.0 - 4.0) / 4.0).max(220.0);
+    let col_inner_w = (col_width - 18.0).max(195.0);
+    let col_h = (board_h - 8.0).max(220.0);
+    let pointer_pos = ui.input(|i| i.pointer.interact_pos());
+    let pointer_released = ui.input(|i| i.pointer.any_released());
 
     ScrollArea::horizontal()
         .id_salt("kanban_4col_hscroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+
                 for col_type in KanbanColumn::all() {
                     let header_col = column_accent(col_type, theme);
                     let col_tasks: Vec<&AgentTaskCard> = kanban
@@ -690,189 +740,228 @@ fn render_four_column_board(
                         .collect();
                     let total_in_col = col_tasks.len();
 
-                    let frame = Frame::none()
-                        .fill(theme.surface_1)
-                        .rounding(Rounding::same(8.0))
-                        .stroke(Stroke::new(1.0, theme.border))
-                        .inner_margin(Margin::same(8.0));
+                    // Allocate a strict vertical column UI so children NEVER inherit horizontal layout
+                    let col_alloc = ui.allocate_ui_with_layout(
+                        vec2(col_width, col_h),
+                        Layout::top_down(Align::Min),
+                        |ui| {
+                            let is_drag_hover = composer.dragging_task_id.is_some()
+                                && pointer_pos
+                                    .map(|p| ui.max_rect().contains(p))
+                                    .unwrap_or(false);
 
-                    let (drop_resp, dropped_payload) =
-                        ui.dnd_drop_zone::<String, ()>(frame, |ui| {
-                            ui.set_width(col_width);
-                            ui.set_min_height((board_h - 14.0).max(220.0));
+                            let col_frame = Frame::none()
+                                .fill(theme.surface_1)
+                                .rounding(Rounding::same(10.0))
+                                .stroke(Stroke::new(
+                                    if is_drag_hover { 1.8 } else { 1.0 },
+                                    if is_drag_hover {
+                                        theme.accent_pop
+                                    } else {
+                                        theme.border
+                                    },
+                                ))
+                                .inner_margin(Margin::same(9.0));
 
-                            // Column Header
-                            ui.horizontal(|ui| {
-                                let (dot_r, _) =
-                                    ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
-                                ui.painter().circle_filled(dot_r.center(), 3.2, header_col);
+                            col_frame.show(ui, |ui| {
+                                ui.set_width(col_inner_w);
+                                ui.set_min_height((col_h - 20.0).max(200.0));
 
-                                ui.label(
-                                    egui::RichText::new(col_type.title())
-                                        .color(theme.text_paper)
-                                        .strong()
-                                        .size(11.0),
-                                );
-                                Frame::none()
-                                    .fill(theme.surface_2)
-                                    .rounding(Rounding::same(4.0))
-                                    .inner_margin(Margin::symmetric(5.0, 1.0))
-                                    .show(ui, |ui| {
+                                ui.vertical(|ui| {
+                                    ui.set_width(col_inner_w);
+
+                                    // Column Header
+                                    ui.horizontal(|ui| {
+                                        let (dot_r, _) =
+                                            ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
+                                        ui.painter()
+                                            .circle_filled(dot_r.center(), 3.5, header_col);
+
                                         ui.label(
-                                            egui::RichText::new(format!("{}", total_in_col))
-                                                .color(theme.text_silver)
-                                                .size(10.0),
+                                            egui::RichText::new(col_type.title())
+                                                .color(theme.text_paper)
+                                                .strong()
+                                                .size(11.2),
+                                        );
+                                        Frame::none()
+                                            .fill(theme.surface_2)
+                                            .rounding(Rounding::same(4.0))
+                                            .inner_margin(Margin::symmetric(6.0, 1.5))
+                                            .show(ui, |ui| {
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "{}",
+                                                        total_in_col
+                                                    ))
+                                                    .color(theme.text_silver)
+                                                    .strong()
+                                                    .size(10.0),
+                                                );
+                                            });
+
+                                        ui.with_layout(
+                                            Layout::right_to_left(Align::Center),
+                                            |ui| {
+                                                if ui
+                                                    .add(
+                                                        egui::Button::new(
+                                                            egui::RichText::new(Lucide::PLUS)
+                                                                .color(theme.text_silver)
+                                                                .size(11.5),
+                                                        )
+                                                        .fill(Color32::TRANSPARENT),
+                                                    )
+                                                    .on_hover_text("Thêm nhanh task vào cột này")
+                                                    .clicked()
+                                                {
+                                                    if composer.quick_add_col == Some(col_type) {
+                                                        composer.quick_add_col = None;
+                                                    } else {
+                                                        composer.quick_add_col = Some(col_type);
+                                                        composer.quick_add_text.clear();
+                                                    }
+                                                }
+                                                if col_type == KanbanColumn::Done
+                                                    && total_in_col > 5
+                                                {
+                                                    let lbl = if composer.done_show_all {
+                                                        "Thu gọn"
+                                                    } else {
+                                                        "Tất cả"
+                                                    };
+                                                    if ui
+                                                        .add(
+                                                            egui::Button::new(
+                                                                egui::RichText::new(lbl)
+                                                                    .color(theme.text_silver)
+                                                                    .size(10.0),
+                                                            )
+                                                            .fill(Color32::TRANSPARENT),
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        composer.done_show_all =
+                                                            !composer.done_show_all;
+                                                    }
+                                                }
+                                            },
                                         );
                                     });
 
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new(Lucide::PLUS)
-                                                    .color(theme.text_silver)
-                                                    .size(11.0),
-                                            )
-                                            .fill(Color32::TRANSPARENT),
-                                        )
-                                        .on_hover_text("Thêm nhanh task vào cột này")
-                                        .clicked()
+                                    ui.add_space(5.0);
+                                    ui.separator();
+                                    ui.add_space(6.0);
+
+                                    // Inline Quick Add box
+                                    if composer.quick_add_col == Some(col_type) {
+                                        if let Some(qa_act) = render_inline_quick_add(
+                                            ui,
+                                            theme,
+                                            col_type,
+                                            composer,
+                                            current_branch,
+                                            col_inner_w,
+                                        ) {
+                                            action = Some(qa_act);
+                                        }
+                                        ui.add_space(6.0);
+                                    }
+
+                                    // Card List inside Vertical ScrollArea
+                                    let visible_limit = if col_type == KanbanColumn::Done
+                                        && !composer.done_show_all
                                     {
-                                        if composer.quick_add_col == Some(col_type) {
-                                            composer.quick_add_col = None;
-                                        } else {
-                                            composer.quick_add_col = Some(col_type);
-                                            composer.quick_add_text.clear();
-                                        }
-                                    }
-                                    if col_type == KanbanColumn::Done && total_in_col > 5 {
-                                        let lbl = if composer.done_show_all {
-                                            "Thu gọn"
-                                        } else {
-                                            "Tất cả"
-                                        };
-                                        if ui
-                                            .add(
-                                                egui::Button::new(
-                                                    egui::RichText::new(lbl)
-                                                        .color(theme.text_silver)
-                                                        .size(9.8),
-                                                )
-                                                .fill(Color32::TRANSPARENT),
-                                            )
-                                            .clicked()
-                                        {
-                                            composer.done_show_all = !composer.done_show_all;
-                                        }
-                                    }
+                                        5
+                                    } else {
+                                        usize::MAX
+                                    };
+
+                                    ScrollArea::vertical()
+                                        .id_salt(format!("kanban_col_v4_{:?}", col_type))
+                                        .auto_shrink([false, false])
+                                        .max_height((col_h - 68.0).max(160.0))
+                                        .show(ui, |ui| {
+                                            ui.set_width(col_inner_w);
+                                            if col_tasks.is_empty() {
+                                                Frame::none()
+                                                    .fill(Color32::TRANSPARENT)
+                                                    .rounding(Rounding::same(6.0))
+                                                    .stroke(Stroke::new(1.0, theme.border))
+                                                    .inner_margin(Margin::symmetric(8.0, 18.0))
+                                                    .show(ui, |ui| {
+                                                        ui.set_width(col_inner_w - 16.0);
+                                                        ui.vertical_centered(|ui| {
+                                                            ui.label(
+                                                                egui::RichText::new(
+                                                                    "Chưa có thẻ — kéo thả hoặc bấm +",
+                                                                )
+                                                                .color(theme.text_silver)
+                                                                .size(10.5),
+                                                            );
+                                                        });
+                                                    });
+                                            } else {
+                                                for task in col_tasks.iter().take(visible_limit) {
+                                                    if let Some(act) = render_task_card(
+                                                        ui,
+                                                        theme,
+                                                        elapsed_secs,
+                                                        task,
+                                                        composer,
+                                                        custom_agents,
+                                                        col_inner_w,
+                                                    ) {
+                                                        action = Some(act);
+                                                    }
+                                                    ui.add_space(7.0);
+                                                }
+                                                if col_type == KanbanColumn::Done
+                                                    && !composer.done_show_all
+                                                    && total_in_col > 5
+                                                {
+                                                    if ui
+                                                        .add(
+                                                            egui::Button::new(
+                                                                egui::RichText::new(format!(
+                                                                    "Xem thêm {} task đã xong",
+                                                                    total_in_col - 5
+                                                                ))
+                                                                .color(theme.text_silver)
+                                                                .size(10.5),
+                                                            )
+                                                            .fill(theme.surface_2)
+                                                            .rounding(Rounding::same(5.0)),
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        composer.done_show_all = true;
+                                                    }
+                                                }
+                                            }
+                                        });
                                 });
                             });
+                        },
+                    );
 
-                            ui.add_space(4.0);
-                            ui.separator();
-                            ui.add_space(6.0);
+                    let col_rect = col_alloc.response.rect;
+                    composer.last_column_rects.push(col_rect);
 
-                            // Inline Quick Add box
-                            if composer.quick_add_col == Some(col_type) {
-                                if let Some(qa_act) = render_inline_quick_add(
-                                    ui,
-                                    theme,
-                                    col_type,
-                                    composer,
-                                    current_branch,
-                                ) {
-                                    action = Some(qa_act);
-                                }
-                                ui.add_space(6.0);
-                            }
-
-                            // Card List
-                            let visible_limit =
-                                if col_type == KanbanColumn::Done && !composer.done_show_all {
-                                    5
-                                } else {
-                                    usize::MAX
-                                };
-
-                            ScrollArea::vertical()
-                                .id_salt(format!("kanban_col_v3_{:?}", col_type))
-                                .auto_shrink([false, false])
-                                .max_height((board_h - 68.0).max(160.0))
-                                .show(ui, |ui| {
-                                    if col_tasks.is_empty() {
-                                        Frame::none()
-                                            .fill(Color32::TRANSPARENT)
-                                            .rounding(Rounding::same(6.0))
-                                            .stroke(Stroke::new(1.0, theme.border))
-                                            .inner_margin(Margin::symmetric(8.0, 14.0))
-                                            .show(ui, |ui| {
-                                                ui.centered_and_justified(|ui| {
-                                                    ui.label(
-                                                        egui::RichText::new("Kéo thả thẻ vào đây")
-                                                            .color(theme.text_silver)
-                                                            .size(10.5),
-                                                    );
-                                                });
-                                            });
-                                    } else {
-                                        for task in col_tasks.iter().take(visible_limit) {
-                                            if let Some(act) = render_task_card(
-                                                ui,
-                                                theme,
-                                                elapsed_secs,
-                                                task,
-                                                composer,
-                                                custom_agents,
-                                            ) {
-                                                action = Some(act);
-                                            }
-                                            ui.add_space(6.0);
-                                        }
-                                        if col_type == KanbanColumn::Done
-                                            && !composer.done_show_all
-                                            && total_in_col > 5
-                                        {
-                                            if ui
-                                                .add(
-                                                    egui::Button::new(
-                                                        egui::RichText::new(format!(
-                                                            "Xem thêm {} task đã xong",
-                                                            total_in_col - 5
-                                                        ))
-                                                        .color(theme.text_silver)
-                                                        .size(10.5),
-                                                    )
-                                                    .fill(theme.surface_2)
-                                                    .rounding(Rounding::same(5.0)),
-                                                )
-                                                .clicked()
-                                            {
-                                                composer.done_show_all = true;
-                                            }
-                                        }
-                                    }
+                    // Handle dropping into this column (if not already handled by dropping onto a specific card)
+                    if pointer_released && action.is_none() {
+                        if let (Some(pos), Some(dragged_id)) =
+                            (pointer_pos, composer.dragging_task_id.clone())
+                        {
+                            if col_rect.contains(pos) {
+                                action = Some(KanbanAction::MoveToColumn {
+                                    task_id: dragged_id,
+                                    target_col: col_type,
+                                    insert_before_id: None,
                                 });
-                        });
-
-                    if drop_resp.response.contains_pointer()
-                        && egui::DragAndDrop::has_payload_of_type::<String>(ui.ctx())
-                    {
-                        ui.painter().rect_stroke(
-                            drop_resp.response.rect,
-                            Rounding::same(8.0),
-                            Stroke::new(1.5, theme.accent_pop),
-                        );
+                                composer.dragging_task_id = None;
+                            }
+                        }
                     }
-
-                    if let Some(dragged_id) = dropped_payload {
-                        action = Some(KanbanAction::MoveToColumn {
-                            task_id: (*dragged_id).clone(),
-                            target_col: col_type,
-                            insert_before_id: None,
-                        });
-                    }
-
-                    ui.add_space(6.0);
                 }
             });
         });
@@ -891,6 +980,7 @@ fn render_compact_board(
     current_branch: &str,
 ) -> Option<KanbanAction> {
     let mut action: Option<KanbanAction> = None;
+    let avail_w = (ui.available_width() - 20.0).max(220.0);
 
     ScrollArea::vertical()
         .id_salt("kanban_compact_vscroll")
@@ -913,83 +1003,88 @@ fn render_compact_board(
                     .fill(theme.surface_1)
                     .rounding(Rounding::same(8.0))
                     .stroke(Stroke::new(1.0, theme.border))
-                    .inner_margin(Margin::same(8.0))
+                    .inner_margin(Margin::same(9.0))
                     .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let chev = if is_collapsed {
-                                Lucide::CHEVRON_RIGHT
-                            } else {
-                                Lucide::CHEVRON_DOWN
-                            };
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new(format!(
-                                            "{} {} ({})",
-                                            chev,
-                                            col_type.title(),
-                                            col_tasks.len()
-                                        ))
-                                        .color(header_col)
-                                        .strong()
-                                        .size(11.0),
-                                    )
-                                    .fill(Color32::TRANSPARENT),
-                                )
-                                .clicked()
-                            {
-                                composer.compact_collapsed.insert(col_type, !is_collapsed);
-                            }
-
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.set_width(avail_w);
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                let chev = if is_collapsed {
+                                    Lucide::CHEVRON_RIGHT
+                                } else {
+                                    Lucide::CHEVRON_DOWN
+                                };
                                 if ui
                                     .add(
                                         egui::Button::new(
-                                            egui::RichText::new(Lucide::PLUS)
-                                                .color(theme.text_silver)
-                                                .size(11.0),
+                                            egui::RichText::new(format!(
+                                                "{} {} ({})",
+                                                chev,
+                                                col_type.title(),
+                                                col_tasks.len()
+                                            ))
+                                            .color(header_col)
+                                            .strong()
+                                            .size(11.2),
                                         )
                                         .fill(Color32::TRANSPARENT),
                                     )
                                     .clicked()
                                 {
-                                    composer.compact_collapsed.insert(col_type, false);
-                                    composer.quick_add_col = Some(col_type);
-                                    composer.quick_add_text.clear();
+                                    composer.compact_collapsed.insert(col_type, !is_collapsed);
                                 }
-                            });
-                        });
 
-                        if !is_collapsed {
-                            ui.add_space(4.0);
-                            if composer.quick_add_col == Some(col_type) {
-                                if let Some(qa) = render_inline_quick_add(
-                                    ui,
-                                    theme,
-                                    col_type,
-                                    composer,
-                                    current_branch,
-                                ) {
-                                    action = Some(qa);
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                egui::RichText::new(Lucide::PLUS)
+                                                    .color(theme.text_silver)
+                                                    .size(11.5),
+                                            )
+                                            .fill(Color32::TRANSPARENT),
+                                        )
+                                        .clicked()
+                                    {
+                                        composer.compact_collapsed.insert(col_type, false);
+                                        composer.quick_add_col = Some(col_type);
+                                        composer.quick_add_text.clear();
+                                    }
+                                });
+                            });
+
+                            if !is_collapsed {
+                                ui.add_space(6.0);
+                                if composer.quick_add_col == Some(col_type) {
+                                    if let Some(qa) = render_inline_quick_add(
+                                        ui,
+                                        theme,
+                                        col_type,
+                                        composer,
+                                        current_branch,
+                                        avail_w - 8.0,
+                                    ) {
+                                        action = Some(qa);
+                                    }
+                                    ui.add_space(6.0);
                                 }
-                                ui.add_space(4.0);
-                            }
-                            for task in col_tasks {
-                                if let Some(act) = render_task_card(
-                                    ui,
-                                    theme,
-                                    elapsed_secs,
-                                    task,
-                                    composer,
-                                    custom_agents,
-                                ) {
-                                    action = Some(act);
+                                for task in col_tasks {
+                                    if let Some(act) = render_task_card(
+                                        ui,
+                                        theme,
+                                        elapsed_secs,
+                                        task,
+                                        composer,
+                                        custom_agents,
+                                        avail_w - 8.0,
+                                    ) {
+                                        action = Some(act);
+                                    }
+                                    ui.add_space(6.0);
                                 }
-                                ui.add_space(5.0);
                             }
-                        }
+                        });
                     });
-                ui.add_space(6.0);
+                ui.add_space(7.0);
             }
         });
 
@@ -1002,67 +1097,71 @@ fn render_inline_quick_add(
     col_type: KanbanColumn,
     composer: &mut KanbanComposerState,
     current_branch: &str,
+    width: f32,
 ) -> Option<KanbanAction> {
     let mut act = None;
     Frame::none()
         .fill(theme.surface_2)
         .rounding(Rounding::same(6.0))
         .stroke(Stroke::new(1.0, theme.accent_pop))
-        .inner_margin(Margin::same(6.0))
+        .inner_margin(Margin::same(7.0))
         .show(ui, |ui| {
-            let resp = ui.add(
-                egui::TextEdit::singleline(&mut composer.quick_add_text)
-                    .hint_text("Tên task... (Enter để tạo)")
-                    .desired_width(ui.available_width())
-                    .text_color(theme.text_paper),
-            );
-            resp.request_focus();
-            let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                if (enter
-                    || ui
+            ui.set_width((width - 14.0).max(160.0));
+            ui.vertical(|ui| {
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut composer.quick_add_text)
+                        .hint_text("Tên task... (Enter để tạo)")
+                        .desired_width(ui.available_width())
+                        .text_color(theme.text_paper),
+                );
+                resp.request_focus();
+                let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                ui.add_space(5.0);
+                ui.horizontal(|ui| {
+                    if (enter
+                        || ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new("Thêm")
+                                        .color(theme.text_on_accent())
+                                        .strong()
+                                        .size(10.2),
+                                )
+                                .fill(theme.accent_pop)
+                                .rounding(Rounding::same(4.0)),
+                            )
+                            .clicked())
+                        && !composer.quick_add_text.trim().is_empty()
+                    {
+                        act = Some(KanbanAction::CreateTask {
+                            title: composer.quick_add_text.trim().to_string(),
+                            description: String::new(),
+                            priority: "P1".to_string(),
+                            agent: ElegansAgent::SeniorDev,
+                            custom_agent: None,
+                            attached_skills: Vec::new(),
+                            branch: current_branch.to_string(),
+                            column: col_type,
+                            auto_schedule_idle: true,
+                            run_now: false,
+                        });
+                        composer.quick_add_text.clear();
+                        composer.quick_add_col = None;
+                    }
+                    if ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new("Thêm")
-                                    .color(Color32::BLACK)
-                                    .strong()
-                                    .size(10.0),
+                                egui::RichText::new("Hủy")
+                                    .color(theme.text_silver)
+                                    .size(10.2),
                             )
-                            .fill(theme.accent_pop)
-                            .rounding(Rounding::same(4.0)),
+                            .fill(Color32::TRANSPARENT),
                         )
-                        .clicked())
-                    && !composer.quick_add_text.trim().is_empty()
-                {
-                    act = Some(KanbanAction::CreateTask {
-                        title: composer.quick_add_text.trim().to_string(),
-                        description: String::new(),
-                        priority: "P1".to_string(),
-                        agent: ElegansAgent::SeniorDev,
-                        custom_agent: None,
-                        attached_skills: Vec::new(),
-                        branch: current_branch.to_string(),
-                        column: col_type,
-                        auto_schedule_idle: true,
-                        run_now: false,
-                    });
-                    composer.quick_add_text.clear();
-                    composer.quick_add_col = None;
-                }
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new("Hủy")
-                                .color(theme.text_silver)
-                                .size(10.0),
-                        )
-                        .fill(Color32::TRANSPARENT),
-                    )
-                    .clicked()
-                {
-                    composer.quick_add_col = None;
-                }
+                        .clicked()
+                    {
+                        composer.quick_add_col = None;
+                    }
+                });
             });
         });
     act
@@ -1075,9 +1174,11 @@ fn render_task_card(
     task: &AgentTaskCard,
     composer: &mut KanbanComposerState,
     custom_agents: &[DiscoveredAgent],
+    card_outer_width: f32,
 ) -> Option<KanbanAction> {
     let mut card_action: Option<KanbanAction> = None;
     let is_selected = composer.selected_task_id.as_deref() == Some(task.id.as_str());
+    let card_inner_w = (card_outer_width - 20.0).max(175.0);
 
     let border_col = if task.run_failed {
         theme.danger
@@ -1101,471 +1202,517 @@ fn render_task_card(
         theme.surface_2
     };
 
-    let drag_id = Id::new(("kanban_card_dnd", &task.id));
-
     let card_frame = Frame::none()
         .fill(bg_fill)
         .rounding(Rounding::same(8.0))
         .stroke(Stroke::new(
             if task.is_running_bg || task.run_failed || is_selected {
-                1.4
+                1.5
             } else {
                 1.0
             },
             border_col,
         ))
-        .inner_margin(Margin::same(9.0));
+        .inner_margin(Margin::same(10.0));
 
     let inner_resp = card_frame.show(ui, |ui| {
-        // Row 1: Priority chip + Task ID + Status badge + Drag handle + Avatar
-        ui.horizontal(|ui| {
-            // Drag handle (dnd_drag_source)
-            let handle_resp = ui
-                .dnd_drag_source(drag_id, task.id.clone(), |ui| {
-                    ui.label(
-                        egui::RichText::new(Lucide::GRIP_VERTICAL)
-                            .color(theme.text_silver)
-                            .size(11.0),
-                    );
-                })
-                .response;
-            handle_resp.on_hover_text("Kéo để chuyển cột hoặc sắp xếp");
+        ui.set_width(card_inner_w);
+        ui.vertical(|ui| {
+            ui.set_width(card_inner_w);
 
-            // Priority pill
-            let pcol = priority_color(&task.priority, theme);
-            Frame::none()
-                .fill(Color32::from_rgba_unmultiplied(pcol.r(), pcol.g(), pcol.b(), 32))
-                .rounding(Rounding::same(3.0))
-                .inner_margin(Margin::symmetric(4.0, 1.0))
-                .show(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new(&task.priority)
-                            .color(pcol)
-                            .strong()
-                            .size(9.5),
+            // Row 1: Drag Handle + Priority chip + Task ID + Status badge + Avatar
+            ui.horizontal(|ui| {
+                let (grip_rect, grip_resp) =
+                    ui.allocate_exact_size(vec2(14.0, 18.0), Sense::drag());
+                ui.painter().text(
+                    grip_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    Lucide::GRIP_VERTICAL,
+                    egui::FontId::proportional(11.0),
+                    theme.text_silver,
+                );
+                if grip_resp.drag_started() || grip_resp.dragged() {
+                    composer.dragging_task_id = Some(task.id.clone());
+                }
+                grip_resp.on_hover_text("Kéo để chuyển cột hoặc sắp xếp");
+
+                // Priority pill
+                let pcol = priority_color(&task.priority, theme);
+                Frame::none()
+                    .fill(Color32::from_rgba_unmultiplied(pcol.r(), pcol.g(), pcol.b(), 36))
+                    .rounding(Rounding::same(4.0))
+                    .inner_margin(Margin::symmetric(5.0, 1.5))
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new(&task.priority)
+                                .color(pcol)
+                                .strong()
+                                .size(9.8),
+                        );
+                    });
+
+                ui.label(
+                    egui::RichText::new(&task.id)
+                        .color(theme.text_silver)
+                        .monospace()
+                        .strong()
+                        .size(10.0),
+                );
+
+                if task.run_failed {
+                    Frame::none()
+                        .fill(Color32::from_rgba_unmultiplied(
+                            theme.danger.r(),
+                            theme.danger.g(),
+                            theme.danger.b(),
+                            38,
+                        ))
+                        .rounding(Rounding::same(3.0))
+                        .inner_margin(Margin::symmetric(4.0, 1.0))
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new("Lỗi")
+                                    .color(theme.danger)
+                                    .strong()
+                                    .size(9.5),
+                            );
+                        });
+                } else if task.is_running_bg {
+                    let (dot, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
+                    ui.painter().circle_filled(dot.center(), 3.2, theme.accent_pop);
+                }
+
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let av_state = if task.is_running_bg {
+                        AgentAvatarState::Thinking
+                    } else {
+                        AgentAvatarState::Idle
+                    };
+                    AvatarManager::render_animated_avatar(
+                        ui,
+                        task.assigned_agent,
+                        av_state,
+                        20.0,
+                        elapsed_secs,
+                        theme.accent_pop,
                     );
                 });
+            });
 
-            ui.label(
-                egui::RichText::new(&task.id)
-                    .color(theme.text_silver)
-                    .monospace()
-                    .size(9.8),
+            ui.add_space(6.0);
+
+            // Row 2: Full-width Clickable Title (wraps normally across full card_inner_w!)
+            let title_resp = ui.add_sized(
+                vec2(card_inner_w, 0.0),
+                egui::Label::new(
+                    egui::RichText::new(&task.title)
+                        .color(theme.text_paper)
+                        .strong()
+                        .size(12.0),
+                )
+                .wrap()
+                .sense(Sense::click()),
             );
+            if title_resp.clicked() {
+                composer.open_drawer_for(task);
+            }
 
-            if task.run_failed {
+            // Optional short description snippet
+            if !task.description.trim().is_empty() {
+                ui.add_space(3.0);
+                let short_desc: String = task.description.chars().take(90).collect();
+                let desc_txt = if task.description.chars().count() > 90 {
+                    format!("{}…", short_desc)
+                } else {
+                    short_desc
+                };
+                let desc_resp = ui.add_sized(
+                    vec2(card_inner_w, 0.0),
+                    egui::Label::new(
+                        egui::RichText::new(desc_txt)
+                            .color(theme.text_silver)
+                            .size(10.5),
+                    )
+                    .wrap()
+                    .sense(Sense::click()),
+                );
+                if desc_resp.clicked() {
+                    composer.open_drawer_for(task);
+                }
+            }
+
+            // Row 3: Subtle metadata (Agent · Branch · Elapsed · Skills)
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(format!("{} {}", task.assigned_agent.icon(), task.display_agent_name()))
+                        .color(theme.text_silver)
+                        .size(10.0),
+                );
+                ui.label(egui::RichText::new("·").color(theme.border_strong).size(10.0));
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} {}",
+                        Lucide::GIT_BRANCH,
+                        task.worktree_branch
+                    ))
+                    .color(theme.text_silver)
+                    .size(10.0),
+                );
+                if task.time_spent_secs > 0 {
+                    ui.label(egui::RichText::new("·").color(theme.border_strong).size(10.0));
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} {}",
+                            Lucide::CLOCK,
+                            format_duration(task.time_spent_secs)
+                        ))
+                        .color(theme.text_silver)
+                        .size(10.0),
+                    );
+                }
+                if !task.attached_skills.is_empty() {
+                    Frame::none()
+                        .fill(theme.surface_3)
+                        .rounding(Rounding::same(3.0))
+                        .inner_margin(Margin::symmetric(4.0, 0.5))
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new(format!("${}", task.attached_skills.len()))
+                                    .color(theme.accent_pop)
+                                    .size(9.5),
+                            );
+                        });
+                }
+            });
+
+            // Running / Failed / Live Output snippet
+            if task.is_running_bg || task.run_failed {
+                ui.add_space(6.0);
+                if task.is_running_bg {
+                    let bar = egui::ProgressBar::new(task.progress_pct)
+                        .desired_height(4.0)
+                        .fill(theme.accent_pop);
+                    ui.add(bar);
+                    ui.add_space(4.0);
+                }
+                Frame::none()
+                    .fill(theme.code_bg)
+                    .rounding(Rounding::same(5.0))
+                    .inner_margin(Margin::symmetric(7.0, 5.0))
+                    .show(ui, |ui| {
+                        ui.set_width((card_inner_w - 14.0).max(140.0));
+                        let snippet: String = task.live_output.chars().take(110).collect();
+                        ui.label(
+                            egui::RichText::new(snippet)
+                                .color(if task.run_failed {
+                                    theme.danger
+                                } else {
+                                    theme.accent_pop
+                                })
+                                .monospace()
+                                .size(9.8),
+                        );
+                    });
+            }
+
+            // Inline Delete Confirmation Bar
+            if composer.confirm_delete_card_id.as_deref() == Some(task.id.as_str()) {
+                ui.add_space(6.0);
                 Frame::none()
                     .fill(Color32::from_rgba_unmultiplied(
                         theme.danger.r(),
                         theme.danger.g(),
                         theme.danger.b(),
-                        38,
+                        28,
                     ))
-                    .rounding(Rounding::same(3.0))
-                    .inner_margin(Margin::symmetric(4.0, 1.0))
+                    .rounding(Rounding::same(5.0))
+                    .inner_margin(Margin::symmetric(6.0, 4.0))
                     .show(ui, |ui| {
-                        ui.label(
-                            egui::RichText::new("Failed")
-                                .color(theme.danger)
-                                .strong()
-                                .size(9.2),
-                        );
-                    });
-            } else if task.is_running_bg {
-                let (dot, _) = ui.allocate_exact_size(vec2(7.0, 7.0), Sense::hover());
-                ui.painter().circle_filled(dot.center(), 3.0, theme.accent_pop);
-            }
-
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let av_state = if task.is_running_bg {
-                    AgentAvatarState::Thinking
-                } else {
-                    AgentAvatarState::Idle
-                };
-                AvatarManager::render_animated_avatar(
-                    ui,
-                    task.assigned_agent,
-                    av_state,
-                    20.0,
-                    elapsed_secs,
-                    theme.accent_pop,
-                );
-            });
-        });
-
-        ui.add_space(4.0);
-
-        // Row 2: Clickable Title (opens Drawer)
-        let title_resp = ui.add(
-            egui::Label::new(
-                egui::RichText::new(&task.title)
-                    .color(theme.text_paper)
-                    .strong()
-                    .size(11.6),
-            )
-            .wrap()
-            .sense(Sense::click()),
-        );
-        if title_resp.clicked() {
-            composer.open_drawer_for(task);
-        }
-
-        // Row 3: Subtle metadata (Agent · Branch · Elapsed · Skills)
-        ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.label(
-                egui::RichText::new(task.display_agent_name())
-                    .color(theme.text_silver)
-                    .size(9.8),
-            );
-            ui.label(egui::RichText::new("·").color(theme.border_strong).size(9.8));
-            ui.label(
-                egui::RichText::new(format!("{} {}", Lucide::GIT_BRANCH, task.worktree_branch))
-                    .color(theme.text_silver)
-                    .size(9.8),
-            );
-            if task.time_spent_secs > 0 {
-                ui.label(egui::RichText::new("·").color(theme.border_strong).size(9.8));
-                ui.label(
-                    egui::RichText::new(format!(
-                        "{} {}",
-                        Lucide::CLOCK,
-                        format_duration(task.time_spent_secs)
-                    ))
-                    .color(theme.text_silver)
-                    .size(9.8),
-                );
-            }
-            if !task.attached_skills.is_empty() {
-                Frame::none()
-                    .fill(theme.surface_3)
-                    .rounding(Rounding::same(3.0))
-                    .inner_margin(Margin::symmetric(4.0, 0.5))
-                    .show(ui, |ui| {
-                        ui.label(
-                            egui::RichText::new(format!("${}", task.attached_skills.len()))
-                                .color(theme.accent_pop)
-                                .size(9.2),
-                        );
-                    });
-            }
-        });
-
-        // Running / Failed / Live Output snippet
-        if task.is_running_bg || task.run_failed {
-            ui.add_space(5.0);
-            if task.is_running_bg {
-                let bar = egui::ProgressBar::new(task.progress_pct)
-                    .desired_height(3.5)
-                    .fill(theme.accent_pop);
-                ui.add(bar);
-                ui.add_space(4.0);
-            }
-            Frame::none()
-                .fill(theme.bg_field)
-                .rounding(Rounding::same(5.0))
-                .inner_margin(Margin::symmetric(6.0, 4.0))
-                .show(ui, |ui| {
-                    let snippet: String = task.live_output.chars().take(120).collect();
-                    ui.label(
-                        egui::RichText::new(snippet)
-                            .color(if task.run_failed {
-                                theme.danger
-                            } else {
-                                theme.accent_pop
-                            })
-                            .monospace()
-                            .size(9.6),
-                    );
-                });
-        }
-
-        // Inline Delete Confirmation Bar (if triggered from card menu)
-        if composer.confirm_delete_card_id.as_deref() == Some(task.id.as_str()) {
-            ui.add_space(5.0);
-            Frame::none()
-                .fill(Color32::from_rgba_unmultiplied(
-                    theme.danger.r(),
-                    theme.danger.g(),
-                    theme.danger.b(),
-                    28,
-                ))
-                .rounding(Rounding::same(5.0))
-                .inner_margin(Margin::symmetric(6.0, 4.0))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("Xóa thẻ này?")
-                                .color(theme.danger)
-                                .strong()
-                                .size(10.0),
-                        );
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new("Xóa")
-                                            .color(Color32::WHITE)
-                                            .strong()
-                                            .size(9.8),
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("Xóa thẻ này?")
+                                    .color(theme.danger)
+                                    .strong()
+                                    .size(10.2),
+                            );
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new("Xóa")
+                                                .color(Color32::WHITE)
+                                                .strong()
+                                                .size(10.0),
+                                        )
+                                        .fill(theme.danger)
+                                        .rounding(Rounding::same(4.0)),
                                     )
-                                    .fill(theme.danger)
-                                    .rounding(Rounding::same(3.0)),
-                                )
-                                .clicked()
-                            {
-                                composer.confirm_delete_card_id = None;
-                                card_action = Some(KanbanAction::DeleteTask(task.id.clone()));
-                            }
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new("Hủy")
-                                            .color(theme.text_silver)
-                                            .size(9.8),
+                                    .clicked()
+                                {
+                                    composer.confirm_delete_card_id = None;
+                                    card_action = Some(KanbanAction::DeleteTask(task.id.clone()));
+                                }
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new("Hủy")
+                                                .color(theme.text_silver)
+                                                .size(10.0),
+                                        )
+                                        .fill(Color32::TRANSPARENT),
                                     )
-                                    .fill(Color32::TRANSPARENT),
-                                )
-                                .clicked()
-                            {
-                                composer.confirm_delete_card_id = None;
-                            }
+                                    .clicked()
+                                {
+                                    composer.confirm_delete_card_id = None;
+                                }
+                            });
                         });
                     });
-                });
-        }
-
-        ui.add_space(6.0);
-
-        // Row 4: Clean Primary Action + Overflow Menu `...`
-        ui.horizontal(|ui| {
-            if task.is_running_bg {
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new(format!("{} Dừng", Lucide::STOP))
-                                .color(Color32::WHITE)
-                                .strong()
-                                .size(9.8),
-                        )
-                        .fill(theme.danger)
-                        .rounding(Rounding::same(4.0)),
-                    )
-                    .clicked()
-                {
-                    card_action = Some(KanbanAction::StopBackground(task.id.clone()));
-                }
-            } else if task.run_failed {
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new(format!("{} Chạy lại", Lucide::ROTATE_CCW))
-                                .color(Color32::BLACK)
-                                .strong()
-                                .size(9.8),
-                        )
-                        .fill(theme.accent_pop)
-                        .rounding(Rounding::same(4.0)),
-                    )
-                    .clicked()
-                {
-                    card_action = Some(KanbanAction::RunInBackground(task.id.clone()));
-                }
-            } else if task.column == KanbanColumn::Verifying {
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new(format!("{} Duyệt", Lucide::CHECK))
-                                .color(Color32::BLACK)
-                                .strong()
-                                .size(9.8),
-                        )
-                        .fill(theme.success)
-                        .rounding(Rounding::same(4.0)),
-                    )
-                    .clicked()
-                {
-                    card_action = Some(KanbanAction::ApproveTask(task.id.clone()));
-                }
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new("Trả lại")
-                                .color(theme.text_silver)
-                                .size(9.8),
-                        )
-                        .fill(theme.surface_3)
-                        .rounding(Rounding::same(4.0)),
-                    )
-                    .clicked()
-                {
-                    card_action = Some(KanbanAction::RejectTask {
-                        task_id: task.id.clone(),
-                        note: String::new(),
-                    });
-                }
-            } else if task.column != KanbanColumn::Done {
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new(format!("{} Chạy", Lucide::PLAY))
-                                .color(Color32::BLACK)
-                                .strong()
-                                .size(9.8),
-                        )
-                        .fill(theme.accent_pop)
-                        .rounding(Rounding::same(4.0)),
-                    )
-                    .on_hover_text("Giao Agent chạy nền task này qua AGY")
-                    .clicked()
-                {
-                    card_action = Some(KanbanAction::RunInBackground(task.id.clone()));
-                }
-            } else {
-                ui.label(
-                    egui::RichText::new(format!("{} Hoàn tất", Lucide::CIRCLE_CHECK))
-                        .color(theme.success)
-                        .size(9.8),
-                );
             }
 
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // Overflow `...` Menu
-                ui.menu_button(
-                    egui::RichText::new(Lucide::ELLIPSIS)
-                        .color(theme.text_silver)
-                        .size(12.0),
-                    |ui| {
-                        if ui
-                            .button(format!("{} Mở chi tiết / Sửa", Lucide::PENCIL))
-                            .clicked()
-                        {
-                            composer.open_drawer_for(task);
-                            ui.close_menu();
-                        }
-                        ui.menu_button(format!("{} Đổi Agent", Lucide::BOT), |ui| {
-                            for &ag in ALL_AGENTS {
-                                if ui.button(format!("{} {}", ag.icon(), ag.name())).clicked() {
-                                    card_action = Some(KanbanAction::ReassignAgent {
-                                        task_id: task.id.clone(),
-                                        next_agent: ag,
-                                        custom_agent: None,
-                                    });
-                                    ui.close_menu();
-                                }
+            ui.add_space(7.0);
+
+            // Row 4: Clean Primary Action + Overflow Menu `...`
+            ui.horizontal(|ui| {
+                if task.is_running_bg {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(format!("{} Dừng", Lucide::STOP))
+                                    .color(Color32::WHITE)
+                                    .strong()
+                                    .size(10.0),
+                            )
+                            .fill(theme.danger)
+                            .rounding(Rounding::same(5.0)),
+                        )
+                        .clicked()
+                    {
+                        card_action = Some(KanbanAction::StopBackground(task.id.clone()));
+                    }
+                } else if task.run_failed {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(format!("{} Chạy lại", Lucide::ROTATE_CCW))
+                                    .color(theme.text_on_accent())
+                                    .strong()
+                                    .size(10.0),
+                            )
+                            .fill(theme.accent_pop)
+                            .rounding(Rounding::same(5.0)),
+                        )
+                        .clicked()
+                    {
+                        card_action = Some(KanbanAction::RunInBackground(task.id.clone()));
+                    }
+                } else if task.column == KanbanColumn::Verifying {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(format!("{} Duyệt", Lucide::CHECK))
+                                    .color(Color32::WHITE)
+                                    .strong()
+                                    .size(10.0),
+                            )
+                            .fill(theme.success)
+                            .rounding(Rounding::same(5.0)),
+                        )
+                        .clicked()
+                    {
+                        card_action = Some(KanbanAction::ApproveTask(task.id.clone()));
+                    }
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("Trả lại")
+                                    .color(theme.text_paper)
+                                    .size(10.0),
+                            )
+                            .fill(theme.surface_3)
+                            .rounding(Rounding::same(5.0)),
+                        )
+                        .clicked()
+                    {
+                        card_action = Some(KanbanAction::RejectTask {
+                            task_id: task.id.clone(),
+                            note: String::new(),
+                        });
+                    }
+                } else if task.column != KanbanColumn::Done {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(format!("{} Chạy", Lucide::PLAY))
+                                    .color(theme.text_on_accent())
+                                    .strong()
+                                    .size(10.0),
+                            )
+                            .fill(theme.accent_pop)
+                            .rounding(Rounding::same(5.0)),
+                        )
+                        .on_hover_text("Giao Agent chạy nền task này qua AGY")
+                        .clicked()
+                    {
+                        card_action = Some(KanbanAction::RunInBackground(task.id.clone()));
+                    }
+                } else {
+                    ui.label(
+                        egui::RichText::new(format!("{} Hoàn tất", Lucide::CIRCLE_CHECK))
+                            .color(theme.success)
+                            .strong()
+                            .size(10.0),
+                    );
+                }
+
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    // Overflow `...` Menu
+                    ui.menu_button(
+                        egui::RichText::new(Lucide::ELLIPSIS)
+                            .color(theme.text_silver)
+                            .size(12.0),
+                        |ui| {
+                            if ui
+                                .button(format!("{} Mở chi tiết & Sửa", Lucide::PENCIL))
+                                .clicked()
+                            {
+                                composer.open_drawer_for(task);
+                                ui.close_menu();
                             }
-                            if !custom_agents.is_empty() {
-                                ui.separator();
-                                for cag in custom_agents {
-                                    if ui.button(format!("@{}", cag.name)).clicked() {
+                            ui.menu_button(format!("{} Đổi Agent", Lucide::BOT), |ui| {
+                                for &ag in ALL_AGENTS {
+                                    if ui.button(format!("{} {}", ag.icon(), ag.name())).clicked() {
                                         card_action = Some(KanbanAction::ReassignAgent {
                                             task_id: task.id.clone(),
-                                            next_agent: ElegansAgent::SeniorDev,
-                                            custom_agent: Some(cag.name.clone()),
+                                            next_agent: ag,
+                                            custom_agent: None,
                                         });
                                         ui.close_menu();
                                     }
                                 }
-                            }
-                        });
-                        ui.menu_button(format!("{} Chuyển cột", Lucide::ARROW_RIGHT), |ui| {
-                            for col in KanbanColumn::all() {
-                                if col != task.column && ui.button(col.title()).clicked() {
-                                    card_action = Some(KanbanAction::MoveToColumn {
-                                        task_id: task.id.clone(),
-                                        target_col: col,
-                                        insert_before_id: None,
-                                    });
-                                    ui.close_menu();
+                                if !custom_agents.is_empty() {
+                                    ui.separator();
+                                    for cag in custom_agents {
+                                        if ui.button(format!("@{}", cag.name)).clicked() {
+                                            card_action = Some(KanbanAction::ReassignAgent {
+                                                task_id: task.id.clone(),
+                                                next_agent: ElegansAgent::SeniorDev,
+                                                custom_agent: Some(cag.name.clone()),
+                                            });
+                                            ui.close_menu();
+                                        }
+                                    }
                                 }
-                            }
-                        });
-                        if ui
-                            .button(format!("{} Nhân bản", Lucide::COPY_PLUS))
-                            .clicked()
-                        {
-                            card_action = Some(KanbanAction::DuplicateTask(task.id.clone()));
-                            ui.close_menu();
-                        }
-                        if !task.full_logs.is_empty()
-                            && ui
-                                .button(format!("{} Copy logs", Lucide::COPY))
+                            });
+                            ui.menu_button(format!("{} Chuyển cột", Lucide::ARROW_RIGHT), |ui| {
+                                for col in KanbanColumn::all() {
+                                    if col != task.column && ui.button(col.title()).clicked() {
+                                        card_action = Some(KanbanAction::MoveToColumn {
+                                            task_id: task.id.clone(),
+                                            target_col: col,
+                                            insert_before_id: None,
+                                        });
+                                        ui.close_menu();
+                                    }
+                                }
+                            });
+                            if ui
+                                .button(format!("{} Nhân bản", Lucide::COPY_PLUS))
                                 .clicked()
-                        {
-                            ui.ctx().copy_text(task.full_logs.join("\n"));
-                            ui.close_menu();
-                        }
-                        ui.separator();
-                        if ui
-                            .button(
-                                egui::RichText::new(format!("{} Xóa task", Lucide::TRASH))
-                                    .color(theme.danger),
+                            {
+                                card_action = Some(KanbanAction::DuplicateTask(task.id.clone()));
+                                ui.close_menu();
+                            }
+                            if !task.full_logs.is_empty()
+                                && ui
+                                    .button(format!("{} Copy logs", Lucide::COPY))
+                                    .clicked()
+                            {
+                                ui.ctx().copy_text(task.full_logs.join("\n"));
+                                ui.close_menu();
+                            }
+                            ui.separator();
+                            if ui
+                                .button(
+                                    egui::RichText::new(format!("{} Xóa task", Lucide::TRASH))
+                                        .color(theme.danger),
+                                )
+                                .clicked()
+                            {
+                                composer.confirm_delete_card_id = Some(task.id.clone());
+                                ui.close_menu();
+                            }
+                        },
+                    );
+
+                    // Quote to Chat icon button
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(Lucide::MESSAGE_SQUARE)
+                                    .color(theme.text_silver)
+                                    .size(11.0),
                             )
-                            .clicked()
-                        {
-                            composer.confirm_delete_card_id = Some(task.id.clone());
-                            ui.close_menu();
-                        }
-                    },
-                );
-
-                // Quote to Chat icon button
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new(Lucide::MESSAGE_SQUARE)
-                                .color(theme.text_silver)
-                                .size(11.0),
+                            .fill(Color32::TRANSPARENT),
                         )
-                        .fill(Color32::TRANSPARENT),
-                    )
-                    .on_hover_text("Trích dẫn task này sang Chat")
-                    .clicked()
-                {
-                    card_action = Some(KanbanAction::QuoteTaskToChat(QuotedContext {
-                        source_msg_id: task.id.clone(),
-                        author_label: format!("Kanban {}", task.display_agent_name()),
-                        snippet: format!("{}\nKết quả: {}", task.title, task.live_output),
-                        is_quote_block: true,
-                    }));
-                }
+                        .on_hover_text("Trích dẫn task này sang Chat")
+                        .clicked()
+                    {
+                        card_action = Some(KanbanAction::QuoteTaskToChat(QuotedContext {
+                            source_msg_id: task.id.clone(),
+                            author_label: format!("Kanban {}", task.display_agent_name()),
+                            snippet: format!("{}\nKết quả: {}", task.title, task.live_output),
+                            is_quote_block: true,
+                        }));
+                    }
 
-                // Detail drawer quick open icon
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new(Lucide::EYE)
-                                .color(theme.text_silver)
-                                .size(11.0),
+                    // Detail drawer quick open icon
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(Lucide::PENCIL)
+                                    .color(theme.text_silver)
+                                    .size(11.0),
+                            )
+                            .fill(Color32::TRANSPARENT),
                         )
-                        .fill(Color32::TRANSPARENT),
-                    )
-                    .on_hover_text("Mở chi tiết & log")
-                    .clicked()
-                {
-                    composer.open_drawer_for(task);
-                }
+                        .on_hover_text("Mở khung Sửa & Xem Log")
+                        .clicked()
+                    {
+                        composer.open_drawer_for(task);
+                    }
+                });
             });
         });
     });
 
-    // Drop target directly on a card -> insert right before this card!
-    if let Some(dragged_id) = inner_resp.response.dnd_release_payload::<String>() {
-        if dragged_id.as_str() != task.id.as_str() {
-            card_action = Some(KanbanAction::MoveToColumn {
-                task_id: (*dragged_id).clone(),
-                target_col: task.column,
-                insert_before_id: Some(task.id.clone()),
-            });
+    let card_rect = inner_resp.response.rect;
+    composer
+        .last_card_rects
+        .push((task.id.clone(), card_rect));
+
+    // Handle drop onto this card (reorder before this card)
+    if let Some(ref dragged_id) = composer.dragging_task_id.clone() {
+        if dragged_id != &task.id {
+            let pointer_pos = ui.input(|i| i.pointer.interact_pos());
+            if let Some(pos) = pointer_pos {
+                if card_rect.contains(pos) {
+                    ui.painter().line_segment(
+                        [card_rect.left_top(), card_rect.right_top()],
+                        Stroke::new(2.5, theme.accent_pop),
+                    );
+                    if ui.input(|i| i.pointer.any_released()) {
+                        card_action = Some(KanbanAction::MoveToColumn {
+                            task_id: dragged_id.clone(),
+                            target_col: task.column,
+                            insert_before_id: Some(task.id.clone()),
+                        });
+                        composer.dragging_task_id = None;
+                    }
+                }
+            }
         }
-    } else if inner_resp.response.contains_pointer()
-        && egui::DragAndDrop::has_payload_of_type::<String>(ui.ctx())
-    {
-        let r = inner_resp.response.rect;
-        ui.painter().line_segment(
-            [r.left_top(), r.right_top()],
-            Stroke::new(2.0, theme.accent_pop),
-        );
     }
 
     card_action
@@ -1651,12 +1798,12 @@ fn render_task_drawer(
                             .add(
                                 egui::Button::new(
                                     egui::RichText::new(format!("{} Lưu", Lucide::SAVE))
-                                        .color(Color32::BLACK)
+                                        .color(theme.text_on_accent())
                                         .strong()
                                         .size(10.5),
                                 )
                                 .fill(theme.accent_pop)
-                                .rounding(Rounding::same(4.0)),
+                                .rounding(Rounding::same(5.0)),
                             )
                             .clicked()
                     {
@@ -1684,7 +1831,7 @@ fn render_task_drawer(
             ScrollArea::vertical()
                 .id_salt("kanban_drawer_body_scroll")
                 .auto_shrink([false, false])
-                .max_height((ui.available_height() - 44.0).max(150.0))
+                .max_height((ui.available_height() - 46.0).max(150.0))
                 .show(ui, |ui| {
                     // Editable Title
                     if ui
@@ -1710,27 +1857,29 @@ fn render_task_drawer(
                             ui.label(
                                 egui::RichText::new("Trạng thái")
                                     .color(theme.text_silver)
-                                    .size(10.5),
+                                    .size(10.8),
                             );
-                            egui::ComboBox::from_id_salt("drawer_status_cb")
-                                .selected_text(draft.column.title())
-                                .show_ui(ui, |ui| {
+                            ui.menu_button(
+                                format!("{} {}", draft.column.title(), Lucide::CHEVRON_DOWN),
+                                |ui| {
                                     for col in KanbanColumn::all() {
                                         if ui
                                             .selectable_value(&mut draft.column, col, col.title())
                                             .changed()
                                         {
                                             draft.dirty = true;
+                                            ui.close_menu();
                                         }
                                     }
-                                });
+                                },
+                            );
                             ui.end_row();
 
                             // Priority
                             ui.label(
                                 egui::RichText::new("Ưu tiên")
                                     .color(theme.text_silver)
-                                    .size(10.5),
+                                    .size(10.8),
                             );
                             ui.horizontal(|ui| {
                                 for p in ["P0", "P1", "P2"] {
@@ -1741,12 +1890,12 @@ fn render_task_drawer(
                                             egui::Button::new(
                                                 egui::RichText::new(p)
                                                     .color(if is_p {
-                                                        Color32::BLACK
+                                                        Color32::WHITE
                                                     } else {
                                                         pcol
                                                     })
                                                     .strong()
-                                                    .size(10.0),
+                                                    .size(10.2),
                                             )
                                             .fill(if is_p { pcol } else { theme.surface_2 })
                                             .rounding(Rounding::same(4.0)),
@@ -1764,30 +1913,35 @@ fn render_task_drawer(
                             ui.label(
                                 egui::RichText::new("Agent")
                                     .color(theme.text_silver)
-                                    .size(10.5),
+                                    .size(10.8),
                             );
                             let cur_ag = draft
                                 .custom_agent
                                 .as_deref()
                                 .map(|c| format!("@{}", c))
                                 .unwrap_or_else(|| draft.agent.name().to_string());
-                            egui::ComboBox::from_id_salt("drawer_agent_cb")
-                                .selected_text(cur_ag)
-                                .width(190.0)
-                                .show_ui(ui, |ui| {
+                            ui.menu_button(
+                                format!("{} {}", cur_ag, Lucide::CHEVRON_DOWN),
+                                |ui| {
                                     for &ag in ALL_AGENTS {
                                         let sel =
                                             draft.custom_agent.is_none() && draft.agent == ag;
                                         if ui
                                             .selectable_label(
                                                 sel,
-                                                format!("{} {} — {}", ag.icon(), ag.name(), ag.title()),
+                                                format!(
+                                                    "{} {} — {}",
+                                                    ag.icon(),
+                                                    ag.name(),
+                                                    ag.title()
+                                                ),
                                             )
                                             .clicked()
                                         {
                                             draft.agent = ag;
                                             draft.custom_agent = None;
                                             draft.dirty = true;
+                                            ui.close_menu();
                                         }
                                     }
                                     if !custom_agents.is_empty() {
@@ -1804,22 +1958,28 @@ fn render_task_drawer(
                                             {
                                                 draft.custom_agent = Some(cag.name.clone());
                                                 draft.dirty = true;
+                                                ui.close_menu();
                                             }
                                         }
                                     }
-                                });
+                                },
+                            );
                             ui.end_row();
 
                             // Branch
                             ui.label(
                                 egui::RichText::new("Branch")
                                     .color(theme.text_silver)
-                                    .size(10.5),
+                                    .size(10.8),
                             );
-                            egui::ComboBox::from_id_salt("drawer_branch_cb")
-                                .selected_text(format!("{} {}", Lucide::GIT_BRANCH, draft.branch))
-                                .width(190.0)
-                                .show_ui(ui, |ui| {
+                            ui.menu_button(
+                                format!(
+                                    "{} {} {}",
+                                    Lucide::GIT_BRANCH,
+                                    draft.branch,
+                                    Lucide::CHEVRON_DOWN
+                                ),
+                                |ui| {
                                     for b in branches {
                                         if ui
                                             .selectable_value(
@@ -1830,16 +1990,18 @@ fn render_task_drawer(
                                             .changed()
                                         {
                                             draft.dirty = true;
+                                            ui.close_menu();
                                         }
                                     }
-                                });
+                                },
+                            );
                             ui.end_row();
 
                             // Auto-run idle
                             ui.label(
                                 egui::RichText::new("Tự động")
                                     .color(theme.text_silver)
-                                    .size(10.5),
+                                    .size(10.8),
                             );
                             if ui
                                 .checkbox(&mut draft.auto_schedule_idle, "Chạy khi máy nhàn rỗi")
@@ -1857,7 +2019,7 @@ fn render_task_drawer(
                         ui.label(
                             egui::RichText::new("Skills:")
                                 .color(theme.text_silver)
-                                .size(10.5),
+                                .size(10.8),
                         );
                         let mut remove_idx = None;
                         for (idx, sk_name) in draft.attached_skills.iter().enumerate() {
@@ -1865,13 +2027,13 @@ fn render_task_drawer(
                                 .fill(theme.surface_2)
                                 .rounding(Rounding::same(4.0))
                                 .stroke(Stroke::new(1.0, theme.border_strong))
-                                .inner_margin(Margin::symmetric(5.0, 2.0))
+                                .inner_margin(Margin::symmetric(6.0, 2.0))
                                 .show(ui, |ui| {
                                     ui.horizontal(|ui| {
                                         ui.label(
                                             egui::RichText::new(format!("${}", sk_name))
                                                 .color(theme.accent_pop)
-                                                .size(10.0),
+                                                .size(10.2),
                                         );
                                         if ui
                                             .add(
@@ -1895,9 +2057,9 @@ fn render_task_drawer(
                         }
 
                         ui.menu_button(
-                            egui::RichText::new(format!("{} Skill", Lucide::PLUS))
+                            egui::RichText::new(format!("{} Gắn Skill", Lucide::PLUS))
                                 .color(theme.text_silver)
-                                .size(10.0),
+                                .size(10.2),
                             |ui| {
                                 let enabled_skills: Vec<&DiscoveredSkill> =
                                     skills.iter().filter(|s| s.enabled).collect();
@@ -1922,7 +2084,7 @@ fn render_task_drawer(
                         egui::RichText::new("Mô tả / Prompt cho Agent")
                             .color(theme.text_silver)
                             .strong()
-                            .size(10.5),
+                            .size(10.8),
                     );
                     ui.add_space(3.0);
                     if ui
@@ -1951,7 +2113,7 @@ fn render_task_drawer(
                                     egui::RichText::new("Nghiệm thu kết quả")
                                         .color(theme.info)
                                         .strong()
-                                        .size(10.5),
+                                        .size(10.8),
                                 );
                                 ui.add_space(4.0);
                                 ui.add(
@@ -1968,12 +2130,12 @@ fn render_task_drawer(
                                                     "{} Duyệt → Done",
                                                     Lucide::CHECK
                                                 ))
-                                                .color(Color32::BLACK)
+                                                .color(Color32::WHITE)
                                                 .strong()
                                                 .size(10.5),
                                             )
                                             .fill(theme.success)
-                                            .rounding(Rounding::same(4.0)),
+                                            .rounding(Rounding::same(5.0)),
                                         )
                                         .clicked()
                                     {
@@ -1992,7 +2154,7 @@ fn render_task_drawer(
                                                 .size(10.5),
                                             )
                                             .fill(theme.surface_3)
-                                            .rounding(Rounding::same(4.0)),
+                                            .rounding(Rounding::same(5.0)),
                                         )
                                         .clicked()
                                     {
@@ -2022,7 +2184,7 @@ fn render_task_drawer(
                                 theme.text_silver
                             })
                             .strong()
-                            .size(10.5),
+                            .size(10.8),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if !logs.is_empty()
@@ -2031,10 +2193,10 @@ fn render_task_drawer(
                                         egui::Button::new(
                                             egui::RichText::new(format!("{} Copy", Lucide::COPY))
                                                 .color(theme.text_silver)
-                                                .size(9.8),
+                                                .size(10.0),
                                         )
                                         .fill(theme.surface_2)
-                                        .rounding(Rounding::same(3.0)),
+                                        .rounding(Rounding::same(4.0)),
                                     )
                                     .clicked()
                             {
@@ -2045,7 +2207,7 @@ fn render_task_drawer(
                     });
                     ui.add_space(4.0);
                     Frame::none()
-                        .fill(theme.bg_field)
+                        .fill(theme.code_bg)
                         .rounding(Rounding::same(6.0))
                         .stroke(Stroke::new(1.0, theme.border))
                         .inner_margin(Margin::same(8.0))
@@ -2060,7 +2222,7 @@ fn render_task_drawer(
                                             egui::RichText::new(&live_output)
                                                 .color(theme.text_silver)
                                                 .monospace()
-                                                .size(10.0),
+                                                .size(10.2),
                                         );
                                     } else {
                                         for line in &logs {
@@ -2075,7 +2237,7 @@ fn render_task_drawer(
                                                 egui::RichText::new(line)
                                                     .color(lcol)
                                                     .monospace()
-                                                    .size(10.0),
+                                                    .size(10.2),
                                             );
                                         }
                                     }
@@ -2108,7 +2270,7 @@ fn render_task_drawer(
                     .add(
                         egui::Button::new(
                             egui::RichText::new(format!("{} Chạy nền", Lucide::PLAY))
-                                .color(Color32::BLACK)
+                                .color(theme.text_on_accent())
                                 .strong()
                                 .size(10.5),
                         )
@@ -2117,10 +2279,6 @@ fn render_task_drawer(
                     )
                     .clicked()
                 {
-                    if draft.dirty {
-                        draft.dirty = false;
-                        // Save is triggered on next edit or we just run directly
-                    }
                     action = Some(KanbanAction::RunInBackground(draft.task_id.clone()));
                 }
 
@@ -2152,7 +2310,7 @@ fn render_task_drawer(
                                     egui::RichText::new("Xác nhận xóa")
                                         .color(Color32::WHITE)
                                         .strong()
-                                        .size(10.0),
+                                        .size(10.2),
                                 )
                                 .fill(theme.danger)
                                 .rounding(Rounding::same(4.0)),
@@ -2167,7 +2325,7 @@ fn render_task_drawer(
                                 egui::Button::new(
                                     egui::RichText::new("Hủy")
                                         .color(theme.text_silver)
-                                        .size(10.0),
+                                        .size(10.2),
                                 )
                                 .fill(Color32::TRANSPARENT),
                             )
@@ -2222,7 +2380,7 @@ fn render_create_task_modal(
         .open(&mut open)
         .collapsible(false)
         .resizable(true)
-        .default_width(500.0)
+        .default_width(510.0)
         .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0))
         .frame(
             Frame::none()
@@ -2235,7 +2393,7 @@ fn render_create_task_modal(
             ui.label(
                 egui::RichText::new("Tiêu đề task")
                     .color(theme.text_silver)
-                    .size(10.5),
+                    .size(10.8),
             );
             ui.add_space(3.0);
             ui.add(
@@ -2248,7 +2406,7 @@ fn render_create_task_modal(
             ui.label(
                 egui::RichText::new("Mô tả / Prompt chi tiết cho Agent")
                     .color(theme.text_silver)
-                    .size(10.5),
+                    .size(10.8),
             );
             ui.add_space(3.0);
             ui.add(
@@ -2267,7 +2425,7 @@ fn render_create_task_modal(
                     ui.label(
                         egui::RichText::new("Ưu tiên")
                             .color(theme.text_silver)
-                            .size(10.5),
+                            .size(10.8),
                     );
                     ui.horizontal(|ui| {
                         for p in ["P0", "P1", "P2"] {
@@ -2277,7 +2435,7 @@ fn render_create_task_modal(
                                 .add(
                                     egui::Button::new(
                                         egui::RichText::new(p)
-                                            .color(if is_p { Color32::BLACK } else { pcol })
+                                            .color(if is_p { Color32::WHITE } else { pcol })
                                             .strong()
                                             .size(10.5),
                                     )
@@ -2296,7 +2454,7 @@ fn render_create_task_modal(
                     ui.label(
                         egui::RichText::new("Agent phụ trách")
                             .color(theme.text_silver)
-                            .size(10.5),
+                            .size(10.8),
                     );
                     let cur_ag = composer
                         .selected_custom_agent
@@ -2309,10 +2467,9 @@ fn render_create_task_modal(
                                 composer.selected_agent.name()
                             )
                         });
-                    egui::ComboBox::from_id_salt("modal_agent_cb")
-                        .selected_text(cur_ag)
-                        .width(260.0)
-                        .show_ui(ui, |ui| {
+                    ui.menu_button(
+                        format!("{} {}", cur_ag, Lucide::CHEVRON_DOWN),
+                        |ui| {
                             for &ag in ALL_AGENTS {
                                 let sel = composer.selected_custom_agent.is_none()
                                     && composer.selected_agent == ag;
@@ -2325,6 +2482,7 @@ fn render_create_task_modal(
                                 {
                                     composer.selected_agent = ag;
                                     composer.selected_custom_agent = None;
+                                    ui.close_menu();
                                 }
                             }
                             if !custom_agents.is_empty() {
@@ -2340,34 +2498,42 @@ fn render_create_task_modal(
                                         .clicked()
                                     {
                                         composer.selected_custom_agent = Some(cag.name.clone());
+                                        ui.close_menu();
                                     }
                                 }
                             }
-                        });
+                        },
+                    );
                     ui.end_row();
 
                     // Branch
                     ui.label(
                         egui::RichText::new("Branch")
                             .color(theme.text_silver)
-                            .size(10.5),
+                            .size(10.8),
                     );
-                    egui::ComboBox::from_id_salt("modal_branch_cb")
-                        .selected_text(format!(
-                            "{} {}",
+                    ui.menu_button(
+                        format!(
+                            "{} {} {}",
                             Lucide::GIT_BRANCH,
-                            composer.selected_branch
-                        ))
-                        .width(220.0)
-                        .show_ui(ui, |ui| {
+                            composer.selected_branch,
+                            Lucide::CHEVRON_DOWN
+                        ),
+                        |ui| {
                             for b in branches {
-                                ui.selectable_value(
-                                    &mut composer.selected_branch,
-                                    b.clone(),
-                                    b.as_str(),
-                                );
+                                if ui
+                                    .selectable_value(
+                                        &mut composer.selected_branch,
+                                        b.clone(),
+                                        b.as_str(),
+                                    )
+                                    .changed()
+                                {
+                                    ui.close_menu();
+                                }
                             }
-                        });
+                        },
+                    );
                     ui.end_row();
                 });
 
@@ -2377,7 +2543,7 @@ fn render_create_task_modal(
                 ui.label(
                     egui::RichText::new("Skills đính kèm:")
                         .color(theme.text_silver)
-                        .size(10.5),
+                        .size(10.8),
                 );
                 let mut rem = None;
                 for (i, s) in composer.selected_skills.iter().enumerate() {
@@ -2390,7 +2556,7 @@ fn render_create_task_modal(
                                 ui.label(
                                     egui::RichText::new(format!("${}", s))
                                         .color(theme.accent_pop)
-                                        .size(10.0),
+                                        .size(10.2),
                                 );
                                 if ui.small_button(Lucide::X).clicked() {
                                     rem = Some(i);
@@ -2404,7 +2570,7 @@ fn render_create_task_modal(
                 ui.menu_button(
                     egui::RichText::new(format!("{} Chọn skill", Lucide::PLUS))
                         .color(theme.text_silver)
-                        .size(10.0),
+                        .size(10.2),
                     |ui| {
                         for sk in skills.iter().filter(|s| s.enabled) {
                             if !composer.selected_skills.contains(&sk.name)
@@ -2468,7 +2634,7 @@ fn render_create_task_modal(
                             can_submit,
                             egui::Button::new(
                                 egui::RichText::new(format!("{} Giao & chạy ngay", Lucide::PLAY))
-                                    .color(Color32::BLACK)
+                                    .color(theme.text_on_accent())
                                     .strong()
                                     .size(11.0),
                             )
@@ -2503,4 +2669,79 @@ fn render_create_task_modal(
     }
 
     action
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kanban_board_layout_renders_full_width_cards_in_dark_and_light_themes() {
+        for theme in [CanhTheme::warm_dark(), CanhTheme::warm_light()] {
+            let ctx = egui::Context::default();
+            let mut kanban = AgentKanbanManager::default_workspace_board();
+            let mut composer = KanbanComposerState::default();
+            let branches = vec!["main".to_string(), "feat/ui".to_string()];
+
+            let mut raw_input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(
+                    egui::pos2(0.0, 0.0),
+                    vec2(1320.0, 800.0),
+                )),
+                ..Default::default()
+            };
+
+            // Run 2 frames so egui resolves ScrollArea and Frame layout rects
+            for _ in 0..2 {
+                let _ = ctx.run(raw_input.clone(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let _ = render_agent_kanban_view(
+                            ui,
+                            &theme,
+                            1.0,
+                            &mut kanban,
+                            &mut composer,
+                            &[],
+                            &[],
+                            &branches,
+                            "main",
+                        );
+                    });
+                });
+                raw_input.events.clear();
+            }
+
+            assert_eq!(
+                composer.last_column_rects.len(),
+                4,
+                "All 4 Kanban columns must be rendered"
+            );
+            for i in 0..3 {
+                assert!(
+                    composer.last_column_rects[i].left()
+                        < composer.last_column_rects[i + 1].left(),
+                    "Columns must be arranged horizontally left-to-right"
+                );
+            }
+
+            assert!(
+                composer.last_card_rects.len() >= 4,
+                "All default task cards must be rendered"
+            );
+            for (id, rect) in &composer.last_card_rects {
+                assert!(
+                    rect.width() >= 190.0,
+                    "Card {} width ({}) is too narrow (would cause vertical text wrapping!)",
+                    id,
+                    rect.width()
+                );
+                assert!(
+                    rect.height() < 240.0,
+                    "Card {} height ({}) is abnormally tall (indicates vertical character wrapping!)",
+                    id,
+                    rect.height()
+                );
+            }
+        }
+    }
 }

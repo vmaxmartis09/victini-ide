@@ -4,6 +4,7 @@ pub mod kanban_view;
 pub mod layout_state;
 pub mod qoder_chat;
 pub mod qoder_sidebar;
+pub mod skill_studio;
 pub mod studio_modals;
 
 pub use beebox_dock::{render_beebox_panel, BeeBoxAction, BeeBoxUiState};
@@ -12,6 +13,8 @@ pub use kanban_view::{render_agent_kanban_view, KanbanAction, KanbanComposerStat
 pub use layout_state::{CenterViewMode, LayoutState};
 pub use qoder_chat::{render_qoder_chat_timeline, ChatComposerUiState, ChatUiAction};
 pub use qoder_sidebar::{render_qoder_sidebar, SidebarAction};
+#[allow(unused_imports)]
+pub use skill_studio::{render_skill_agent_studio, SkillStudioAction, SkillStudioState};
 pub use studio_modals::{
     render_agent_skill_studio, render_git_diff_viewer, render_projects_manager,
     render_settings_modal, StudioEditorState, StudioModalAction,

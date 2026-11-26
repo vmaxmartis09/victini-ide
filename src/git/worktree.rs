@@ -147,6 +147,49 @@ impl GitManager {
         Ok(())
     }
 
+    pub fn is_noisy_build_path(path: &str) -> bool {
+        let norm = path.replace('\\', "/");
+        let lower = norm.to_lowercase();
+        let noisy_prefixes = [
+            "target/",
+            "node_modules/",
+            ".git/",
+            "dist/",
+            "build/",
+            ".next/",
+            ".cargo/",
+            ".gradle/",
+            "__pycache__/",
+            ".venv/",
+            "venv/",
+            "vendor/",
+        ];
+        if noisy_prefixes
+            .iter()
+            .any(|p| lower.starts_with(p) || lower.contains(&format!("/{}", p)))
+        {
+            return true;
+        }
+        let file_name = norm.rsplit('/').next().unwrap_or(&norm);
+        if matches!(
+            file_name,
+            "CACHEDIR.TAG"
+                | ".cargo-lock"
+                | "rustc_info.json"
+                | "invoked.timestamp"
+                | ".DS_Store"
+        ) || file_name.starts_with("dep-lib-")
+            || file_name.starts_with("run-build-script-")
+            || file_name.ends_with(".rlib")
+            || file_name.ends_with(".rmeta")
+            || file_name.ends_with(".d")
+            || file_name.ends_with(".o")
+        {
+            return true;
+        }
+        false
+    }
+
     pub fn get_status(&self) -> Vec<GitFileChange> {
         let mut changes = Vec::new();
         if let Ok(repo) = Repository::discover(&self.repo_path) {
@@ -155,7 +198,7 @@ impl GitManager {
             if let Ok(statuses) = repo.statuses(Some(&mut opts)) {
                 for entry in statuses.iter() {
                     let path = entry.path().unwrap_or("").to_string();
-                    if path.is_empty() {
+                    if path.is_empty() || Self::is_noisy_build_path(&path) {
                         continue;
                     }
                     let s = entry.status();
@@ -173,10 +216,13 @@ impl GitManager {
                         "?"
                     };
 
-                    let (added_lines, removed_lines) = self
-                        .compute_file_diff(&path)
-                        .map(|h| (h.added_count, h.removed_count))
-                        .unwrap_or((0, 0));
+                    let (added_lines, removed_lines) = if changes.len() < 60 {
+                        self.compute_file_diff(&path)
+                            .map(|h| (h.added_count, h.removed_count))
+                            .unwrap_or((0, 0))
+                    } else {
+                        (0, 0)
+                    };
 
                     changes.push(GitFileChange {
                         path,
@@ -185,6 +231,9 @@ impl GitManager {
                         added_lines,
                         removed_lines,
                     });
+                    if changes.len() >= 250 {
+                        break;
+                    }
                 }
             }
         }

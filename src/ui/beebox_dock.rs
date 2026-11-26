@@ -2,9 +2,10 @@ use crate::ai::{AgentTaskCard, KanbanColumn};
 use crate::emulator::{EmulatorState, TouchRipple, ELEGANS_VIEWPORT_PRESETS};
 use crate::git::{GitFileChange, WorktreeInfo};
 use crate::theme::{CanhTheme, Lucide};
+use crate::ui::header::icon_btn;
 use egui::{
     pos2, vec2, Align, Align2, Color32, FontId, Frame, Layout, Margin, Pos2, Rounding, ScrollArea,
-    Stroke, Ui,
+    Stroke, TextureOptions, Ui,
 };
 use std::path::PathBuf;
 
@@ -33,6 +34,7 @@ pub enum BeeBoxAction {
     TriggerTap(u32, u32),
     SwitchPreset(usize),
     CaptureAdbFrame,
+    OpenPreviewUrl(String),
     RunBackgroundTask(String),
 }
 
@@ -80,23 +82,24 @@ pub fn render_beebox_panel(
 ) -> Option<BeeBoxAction> {
     let mut action = None;
 
-    // T3 CODE EXACT BEEBOX CONTAINER (#111111)
+    // T3 CODE BEEBOX CONTAINER (Adapts dynamically to Dark Mode & Light Mode)
     Frame::none()
-        .fill(Color32::from_rgb(0x11, 0x11, 0x11))
+        .fill(theme.panel_bg)
         .rounding(Rounding::same(12.0))
-        .stroke(Stroke::new(1.0, Color32::from_rgb(0x19, 0x19, 0x19)))
+        .stroke(Stroke::new(1.0, theme.border))
         .inner_margin(Margin::same(12.0))
         .show(ui, |ui| {
             ScrollArea::vertical()
                 .id_salt("t3_beebox_panel_scroll")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    // 1. Header: BeeBox · project_name ... [folder icon]
+                    // 1. Header: BeeBox · project_name ... [Folder Icon]
                     ui.horizontal(|ui| {
-                        let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), egui::Sense::hover());
+                        let (rect, _) =
+                            ui.allocate_exact_size(vec2(14.0, 14.0), egui::Sense::hover());
                         ui.painter().rect_stroke(
                             rect,
-                            Rounding::same(2.0),
+                            Rounding::same(2.5),
                             Stroke::new(1.2, theme.accent_pop),
                         );
 
@@ -113,28 +116,29 @@ pub fn render_beebox_panel(
                                 .size(10.5),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new(Lucide::FOLDER)
-                                            .color(theme.text_silver)
-                                            .size(12.0),
-                                    )
-                                    .fill(Color32::TRANSPARENT),
-                                )
-                                .on_hover_text("Quản lý Projects & Workspaces")
-                                .clicked()
+                            if icon_btn(
+                                ui,
+                                Lucide::FOLDER,
+                                theme.text_silver,
+                                Color32::TRANSPARENT,
+                                "Quản lý Projects & Workspaces",
+                            )
+                            .clicked()
                             {
                                 action = Some(BeeBoxAction::OpenProjectsModal);
                             }
                         });
                     });
 
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
 
-                    // 2. Action Accordions: Open in editor & Setup Worktree
+                    // 2. Action Accordions: Open in editor & Setup Worktree (Icon-First)
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(Lucide::CODE).color(theme.text_silver).size(11.0));
+                        ui.label(
+                            egui::RichText::new(Lucide::CODE)
+                                .color(theme.text_silver)
+                                .size(11.5),
+                        );
                         if ui
                             .add(
                                 egui::Button::new(
@@ -150,38 +154,34 @@ pub fn render_beebox_panel(
                             action = Some(BeeBoxAction::OpenBuiltInEditor);
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new("VSCode/Cursor")
-                                            .color(theme.text_silver)
-                                            .size(9.5),
-                                    )
-                                    .fill(Color32::from_rgb(0x18, 0x18, 0x18))
-                                    .rounding(Rounding::same(4.0)),
-                                )
-                                .on_hover_text("Mở thư mục project bằng Cursor / VS Code")
-                                .clicked()
+                            if icon_btn(
+                                ui,
+                                Lucide::EXTERNAL_LINK,
+                                theme.text_silver,
+                                theme.chip_bg,
+                                "Mở thư mục project bằng Cursor / VS Code / Zed",
+                            )
+                            .clicked()
                             {
                                 action = Some(BeeBoxAction::OpenExternalEditor(None));
                             }
                         });
                     });
 
-                    ui.add_space(4.0);
+                    ui.add_space(3.0);
 
                     // Setup Worktree Accordion Header
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new(Lucide::GIT_BRANCH)
                                 .color(theme.text_silver)
-                                .size(11.0),
+                                .size(11.5),
                         );
                         if ui
                             .add(
                                 egui::Button::new(
                                     egui::RichText::new(format!(
-                                        "Setup Worktree ({})",
+                                        "Worktrees ({})",
                                         worktrees.len()
                                     ))
                                     .color(theme.text_paper)
@@ -191,7 +191,8 @@ pub fn render_beebox_panel(
                             )
                             .clicked()
                         {
-                            beebox_state.show_worktree_manager = !beebox_state.show_worktree_manager;
+                            beebox_state.show_worktree_manager =
+                                !beebox_state.show_worktree_manager;
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             let chev = if beebox_state.show_worktree_manager {
@@ -199,16 +200,14 @@ pub fn render_beebox_panel(
                             } else {
                                 Lucide::CHEVRON_RIGHT
                             };
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new(chev)
-                                            .color(theme.text_silver)
-                                            .size(10.0),
-                                    )
-                                    .fill(Color32::TRANSPARENT),
-                                )
-                                .clicked()
+                            if icon_btn(
+                                ui,
+                                chev,
+                                theme.text_silver,
+                                Color32::TRANSPARENT,
+                                "Đóng/mở danh sách Git Worktrees",
+                            )
+                            .clicked()
                             {
                                 beebox_state.show_worktree_manager =
                                     !beebox_state.show_worktree_manager;
@@ -219,9 +218,9 @@ pub fn render_beebox_panel(
                     if beebox_state.show_worktree_manager {
                         ui.add_space(4.0);
                         Frame::none()
-                            .fill(Color32::from_rgb(0x0A, 0x0A, 0x0A))
+                            .fill(theme.surface_1)
                             .rounding(Rounding::same(6.0))
-                            .stroke(Stroke::new(1.0, Color32::from_rgb(0x1E, 0x1E, 0x1E)))
+                            .stroke(Stroke::new(1.0, theme.border))
                             .inner_margin(Margin::same(8.0))
                             .show(ui, |ui| {
                                 for (idx, wt) in worktrees.iter().enumerate() {
@@ -253,17 +252,14 @@ pub fn render_beebox_panel(
                                         }
                                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                             if idx > 0
-                                                && ui
-                                                    .add(
-                                                        egui::Button::new(
-                                                            egui::RichText::new(Lucide::TRASH)
-                                                                .color(theme.text_silver)
-                                                                .size(10.0),
-                                                        )
-                                                        .fill(Color32::TRANSPARENT),
-                                                    )
-                                                    .on_hover_text("Xóa Worktree này")
-                                                    .clicked()
+                                                && icon_btn(
+                                                    ui,
+                                                    Lucide::TRASH,
+                                                    theme.danger,
+                                                    Color32::TRANSPARENT,
+                                                    "Xóa Worktree này",
+                                                )
+                                                .clicked()
                                             {
                                                 action = Some(BeeBoxAction::RemoveWorktree(
                                                     wt.path.clone(),
@@ -274,9 +270,9 @@ pub fn render_beebox_panel(
                                 }
                                 ui.add_space(4.0);
                                 ui.horizontal(|ui| {
-                                    let w = (ui.available_width() - 48.0).max(60.0);
+                                    let w = (ui.available_width() - 36.0).max(60.0);
                                     Frame::none()
-                                        .fill(Color32::from_rgb(0x12, 0x12, 0x12))
+                                        .fill(theme.input_bg)
                                         .rounding(Rounding::same(4.0))
                                         .stroke(Stroke::new(1.0, theme.border))
                                         .inner_margin(Margin::symmetric(6.0, 2.0))
@@ -291,25 +287,21 @@ pub fn render_beebox_panel(
                                                 .text_color(theme.text_paper),
                                             );
                                         });
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new("+ WT")
-                                                    .color(Color32::BLACK)
-                                                    .strong()
-                                                    .size(10.0),
-                                            )
-                                            .fill(theme.accent_pop)
-                                            .rounding(Rounding::same(4.0)),
-                                        )
-                                        .clicked()
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::FOLDER_PLUS,
+                                        theme.on_accent,
+                                        theme.accent_pop,
+                                        "Khởi tạo Git Worktree mới song song",
+                                    )
+                                    .clicked()
                                     {
-                                        let b = if beebox_state.new_worktree_branch.trim().is_empty()
-                                        {
-                                            format!("feat/wt-{}", worktrees.len() + 1)
-                                        } else {
-                                            beebox_state.new_worktree_branch.trim().to_string()
-                                        };
+                                        let b =
+                                            if beebox_state.new_worktree_branch.trim().is_empty() {
+                                                format!("feat/wt-{}", worktrees.len() + 1)
+                                            } else {
+                                                beebox_state.new_worktree_branch.trim().to_string()
+                                            };
                                         beebox_state.new_worktree_branch.clear();
                                         action = Some(BeeBoxAction::SetupWorktree(b));
                                     }
@@ -317,7 +309,7 @@ pub fn render_beebox_panel(
                             });
                     }
 
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
                     ui.separator();
                     ui.add_space(6.0);
 
@@ -326,7 +318,7 @@ pub fn render_beebox_panel(
                         ui.label(
                             egui::RichText::new(Lucide::GIT_BRANCH)
                                 .color(theme.accent_pop)
-                                .size(11.0),
+                                .size(11.5),
                         );
                         if ui
                             .add(
@@ -355,16 +347,14 @@ pub fn render_beebox_panel(
                             } else {
                                 Lucide::CHEVRON_RIGHT
                             };
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new(chev)
-                                            .color(theme.text_silver)
-                                            .size(10.0),
-                                    )
-                                    .fill(Color32::TRANSPARENT),
-                                )
-                                .clicked()
+                            if icon_btn(
+                                ui,
+                                chev,
+                                theme.text_silver,
+                                Color32::TRANSPARENT,
+                                "Chọn / Tạo nhánh Git",
+                            )
+                            .clicked()
                             {
                                 beebox_state.show_branch_picker = !beebox_state.show_branch_picker;
                             }
@@ -374,16 +364,16 @@ pub fn render_beebox_panel(
                     if beebox_state.show_branch_picker {
                         ui.add_space(4.0);
                         Frame::none()
-                            .fill(Color32::from_rgb(0x0A, 0x0A, 0x0A))
+                            .fill(theme.surface_1)
                             .rounding(Rounding::same(6.0))
-                            .stroke(Stroke::new(1.0, Color32::from_rgb(0x1E, 0x1E, 0x1E)))
+                            .stroke(Stroke::new(1.0, theme.border))
                             .inner_margin(Margin::same(8.0))
                             .show(ui, |ui| {
                                 for b in branches {
                                     let is_cur = b == branch_name;
                                     ui.horizontal(|ui| {
                                         let label_txt = if is_cur {
-                                            format!("{} {} (active)", Lucide::CHECK, b)
+                                            format!("{} {}", Lucide::CHECK, b)
                                         } else {
                                             format!("  {}", b)
                                         };
@@ -411,9 +401,9 @@ pub fn render_beebox_panel(
 
                                 ui.add_space(4.0);
                                 ui.horizontal(|ui| {
-                                    let w = (ui.available_width() - 56.0).max(60.0);
+                                    let w = (ui.available_width() - 36.0).max(60.0);
                                     Frame::none()
-                                        .fill(Color32::from_rgb(0x12, 0x12, 0x12))
+                                        .fill(theme.input_bg)
                                         .rounding(Rounding::same(4.0))
                                         .stroke(Stroke::new(1.0, theme.border))
                                         .inner_margin(Margin::symmetric(6.0, 2.0))
@@ -423,23 +413,19 @@ pub fn render_beebox_panel(
                                                 egui::TextEdit::singleline(
                                                     &mut beebox_state.new_branch_name,
                                                 )
-                                                .hint_text("New branch name...")
+                                                .hint_text("New branch...")
                                                 .frame(false)
                                                 .text_color(theme.text_paper),
                                             );
                                         });
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new("Checkout")
-                                                    .color(Color32::BLACK)
-                                                    .strong()
-                                                    .size(9.5),
-                                            )
-                                            .fill(theme.accent_pop)
-                                            .rounding(Rounding::same(4.0)),
-                                        )
-                                        .clicked()
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::PLUS,
+                                        theme.on_accent,
+                                        theme.accent_pop,
+                                        "Tạo & Checkout sang nhánh mới",
+                                    )
+                                    .clicked()
                                         && !beebox_state.new_branch_name.trim().is_empty()
                                     {
                                         let b = beebox_state.new_branch_name.trim().to_string();
@@ -451,19 +437,19 @@ pub fn render_beebox_panel(
                             });
                     }
 
-                    ui.add_space(5.0);
+                    ui.add_space(4.0);
 
-                    // 4. Commit / Push / Pull / Stash / GitLab MR Accordion
+                    // 4. Commit / Push / Pull / Stash / GitLab MR (100% Icon-First Action Bar)
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new(Lucide::GIT_COMMIT)
                                 .color(theme.text_silver)
-                                .size(11.0),
+                                .size(11.5),
                         );
                         if ui
                             .add(
                                 egui::Button::new(
-                                    egui::RichText::new("Commit & Git Operations")
+                                    egui::RichText::new("Git Operations")
                                         .color(theme.text_paper)
                                         .size(11.0),
                                 )
@@ -474,18 +460,14 @@ pub fn render_beebox_panel(
                             beebox_state.show_commit_box = !beebox_state.show_commit_box;
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new(format!("{} MR", Lucide::GIT_PR))
-                                            .color(theme.accent_pop)
-                                            .size(10.0),
-                                    )
-                                    .fill(Color32::from_rgb(0x1F, 0x12, 0x10))
-                                    .rounding(Rounding::same(4.0)),
-                                )
-                                .on_hover_text("Mở GitLab Merge Request")
-                                .clicked()
+                            if icon_btn(
+                                ui,
+                                Lucide::GIT_PR,
+                                theme.accent_pop,
+                                theme.accent_surface,
+                                "Tạo GitLab Merge Request cho nhánh hiện tại",
+                            )
+                            .clicked()
                             {
                                 action = Some(BeeBoxAction::OpenGitLabMr);
                             }
@@ -495,16 +477,16 @@ pub fn render_beebox_panel(
                     if beebox_state.show_commit_box {
                         ui.add_space(4.0);
                         Frame::none()
-                            .fill(Color32::from_rgb(0x0A, 0x0A, 0x0A))
+                            .fill(theme.surface_1)
                             .rounding(Rounding::same(6.0))
-                            .stroke(Stroke::new(1.0, Color32::from_rgb(0x1C, 0x1C, 0x1C)))
+                            .stroke(Stroke::new(1.0, theme.border))
                             .inner_margin(Margin::same(8.0))
                             .show(ui, |ui| {
-                                // Dark Commit Message Input
+                                // Commit Message Input
                                 Frame::none()
-                                    .fill(Color32::from_rgb(0x12, 0x12, 0x12))
+                                    .fill(theme.input_bg)
                                     .rounding(Rounding::same(5.0))
-                                    .stroke(Stroke::new(1.0, Color32::from_rgb(0x20, 0x20, 0x20)))
+                                    .stroke(Stroke::new(1.0, theme.border))
                                     .inner_margin(Margin::symmetric(8.0, 5.0))
                                     .show(ui, |ui| {
                                         ui.add(
@@ -513,131 +495,90 @@ pub fn render_beebox_panel(
                                                 .desired_width(ui.available_width())
                                                 .frame(false)
                                                 .text_color(theme.text_paper)
-                                                .hint_text("Commit message (feat/fix/chore)..."),
+                                                .hint_text("Commit message..."),
                                         );
                                     });
 
                                 ui.add_space(5.0);
 
-                                // Row 1: AI Generate Commit Msg + Commit Button
+                                // 7-Icon Git Action Bar: [Wand AI] [Check Commit] [Upload Push] [Download Pull] [Archive Stash] [ArchiveRestore Pop] [GitPR MR]
                                 ui.horizontal(|ui| {
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new(format!(
-                                                    "{} AI Msg",
-                                                    Lucide::SPARKLES
-                                                ))
-                                                .color(theme.accent_pop)
-                                                .size(10.0),
-                                            )
-                                            .fill(Color32::from_rgb(0x18, 0x18, 0x18))
-                                            .rounding(Rounding::same(4.0)),
-                                        )
-                                        .on_hover_text("Tự động sinh Commit Message từ Diff hiện tại")
-                                        .clicked()
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::WAND,
+                                        theme.accent_pop,
+                                        theme.chip_bg,
+                                        "AI tự động sinh Commit Message từ Diff hiện tại",
+                                    )
+                                    .clicked()
                                     {
                                         action = Some(BeeBoxAction::AiGenerateCommitMsg);
                                     }
 
-                                    let can_commit =
-                                        !commit_message.trim().is_empty() || !file_changes.is_empty();
-                                    if ui
-                                        .add_enabled(
-                                            can_commit,
-                                            egui::Button::new(
-                                                egui::RichText::new(format!(
-                                                    "{} Commit",
-                                                    Lucide::CHECK
-                                                ))
-                                                .color(Color32::BLACK)
-                                                .strong()
-                                                .size(10.5),
-                                            )
-                                            .fill(theme.accent_pop)
-                                            .rounding(Rounding::same(4.0)),
-                                        )
-                                        .clicked()
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::CHECK,
+                                        theme.on_accent,
+                                        theme.accent_pop,
+                                        "Commit các thay đổi (Tự động Stage nếu chưa Stage)",
+                                    )
+                                    .clicked()
                                     {
                                         let msg = if commit_message.trim().is_empty() {
-                                            format!("feat({}): update workspace changes", branch_name)
+                                            format!(
+                                                "feat({}): update workspace changes",
+                                                branch_name
+                                            )
                                         } else {
                                             commit_message.trim().to_string()
                                         };
                                         action = Some(BeeBoxAction::Commit(msg));
                                     }
-                                });
 
-                                ui.add_space(4.0);
-
-                                // Row 2: Push | Pull | Stash | Pop
-                                ui.horizontal_wrapped(|ui| {
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new(format!(
-                                                    "{} Push",
-                                                    Lucide::ARROW_UP
-                                                ))
-                                                .color(theme.text_paper)
-                                                .size(10.0),
-                                            )
-                                            .fill(Color32::from_rgb(0x18, 0x18, 0x18))
-                                            .rounding(Rounding::same(4.0)),
-                                        )
-                                        .on_hover_text("git push -u origin <branch>")
-                                        .clicked()
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::UPLOAD,
+                                        theme.text_paper,
+                                        theme.chip_bg,
+                                        "Git Push lên origin (git push -u origin)",
+                                    )
+                                    .clicked()
                                     {
                                         action = Some(BeeBoxAction::GitPush);
                                     }
 
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new(format!(
-                                                    "{} Pull",
-                                                    Lucide::REFRESH
-                                                ))
-                                                .color(theme.text_paper)
-                                                .size(10.0),
-                                            )
-                                            .fill(Color32::from_rgb(0x18, 0x18, 0x18))
-                                            .rounding(Rounding::same(4.0)),
-                                        )
-                                        .on_hover_text("git pull --rebase --autostash")
-                                        .clicked()
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::DOWNLOAD,
+                                        theme.text_paper,
+                                        theme.chip_bg,
+                                        "Git Pull Rebase (git pull --rebase --autostash)",
+                                    )
+                                    .clicked()
                                     {
                                         action = Some(BeeBoxAction::GitPull);
                                     }
 
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new("Stash")
-                                                    .color(theme.text_silver)
-                                                    .size(10.0),
-                                            )
-                                            .fill(Color32::from_rgb(0x18, 0x18, 0x18))
-                                            .rounding(Rounding::same(4.0)),
-                                        )
-                                        .on_hover_text("Lưu tạm thay đổi (git stash push -u)")
-                                        .clicked()
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::ARCHIVE,
+                                        theme.text_silver,
+                                        theme.chip_bg,
+                                        "Git Stash (Lưu tạm thay đổi chưa commit)",
+                                    )
+                                    .clicked()
                                     {
                                         action = Some(BeeBoxAction::GitStashSave);
                                     }
 
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new("Pop")
-                                                    .color(theme.text_silver)
-                                                    .size(10.0),
-                                            )
-                                            .fill(Color32::from_rgb(0x18, 0x18, 0x18))
-                                            .rounding(Rounding::same(4.0)),
-                                        )
-                                        .on_hover_text("Khôi phục Stash (git stash pop)")
-                                        .clicked()
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::ARCHIVE_RESTORE,
+                                        theme.text_silver,
+                                        theme.chip_bg,
+                                        "Git Stash Pop (Khôi phục thay đổi từ Stash)",
+                                    )
+                                    .clicked()
                                     {
                                         action = Some(BeeBoxAction::GitStashPop);
                                     }
@@ -647,7 +588,7 @@ pub fn render_beebox_panel(
 
                     ui.add_space(6.0);
 
-                    // 5. Real-time Git Changes Inspector (Staged & Working Tree)
+                    // 5. Real-time Git Changes Inspector (Icon-First Controls)
                     let total_add: usize = file_changes.iter().map(|c| c.added_lines).sum();
                     let total_rem: usize = file_changes.iter().map(|c| c.removed_lines).sum();
                     let staged_files: Vec<&GitFileChange> =
@@ -677,45 +618,37 @@ pub fn render_beebox_panel(
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.label(
                                 egui::RichText::new(format!("-{}", total_rem))
-                                    .color(Color32::from_rgb(0xE0, 0x48, 0x48))
+                                    .color(theme.danger)
                                     .monospace()
                                     .size(10.5),
                             );
                             ui.label(
                                 egui::RichText::new(format!("+{}", total_add))
-                                    .color(Color32::from_rgb(0x4E, 0xC9, 0xB0))
+                                    .color(theme.success)
                                     .monospace()
                                     .size(10.5),
                             );
                             if !unstaged_files.is_empty()
-                                && ui
-                                    .add(
-                                        egui::Button::new(
-                                            egui::RichText::new("+All")
-                                                .color(theme.text_silver)
-                                                .size(9.5),
-                                        )
-                                        .fill(Color32::from_rgb(0x18, 0x18, 0x18))
-                                        .rounding(Rounding::same(3.0)),
-                                    )
-                                    .on_hover_text("Stage tất cả thay đổi")
-                                    .clicked()
+                                && icon_btn(
+                                    ui,
+                                    Lucide::PLUS,
+                                    theme.success,
+                                    theme.chip_bg,
+                                    "Stage tất cả file thay đổi",
+                                )
+                                .clicked()
                             {
                                 action = Some(BeeBoxAction::StageAll);
                             }
                             if !staged_files.is_empty()
-                                && ui
-                                    .add(
-                                        egui::Button::new(
-                                            egui::RichText::new("-All")
-                                                .color(theme.text_silver)
-                                                .size(9.5),
-                                        )
-                                        .fill(Color32::from_rgb(0x18, 0x18, 0x18))
-                                        .rounding(Rounding::same(3.0)),
-                                    )
-                                    .on_hover_text("Unstage tất cả file")
-                                    .clicked()
+                                && icon_btn(
+                                    ui,
+                                    Lucide::MINUS,
+                                    theme.warning,
+                                    theme.chip_bg,
+                                    "Unstage tất cả file",
+                                )
+                                .clicked()
                             {
                                 action = Some(BeeBoxAction::UnstageAll);
                             }
@@ -738,7 +671,7 @@ pub fn render_beebox_panel(
                                         "STAGED ({})",
                                         staged_files.len()
                                     ))
-                                    .color(Color32::from_rgb(0x4E, 0xC9, 0xB0))
+                                    .color(theme.success)
                                     .strong()
                                     .size(9.5),
                                 );
@@ -805,9 +738,9 @@ pub fn render_beebox_panel(
                     for task in kanban_tasks.iter().take(5) {
                         let dot_col = match task.column {
                             KanbanColumn::InProgress => theme.accent_pop,
-                            KanbanColumn::Verifying => Color32::from_rgb(0x51, 0xA2, 0xFF),
-                            KanbanColumn::Done => Color32::from_rgb(0x4E, 0xC9, 0xB0),
-                            KanbanColumn::Backlog => Color32::from_rgb(0x80, 0x80, 0x80),
+                            KanbanColumn::Verifying => theme.info,
+                            KanbanColumn::Done => theme.success,
+                            KanbanColumn::Backlog => theme.text_silver,
                         };
                         ui.horizontal(|ui| {
                             let (r, _) =
@@ -823,17 +756,14 @@ pub fn render_beebox_panel(
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if !task.is_running_bg
                                     && task.column != KanbanColumn::Done
-                                    && ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new(Lucide::PLAY)
-                                                    .color(theme.accent_pop)
-                                                    .size(9.5),
-                                            )
-                                            .fill(Color32::TRANSPARENT),
-                                        )
-                                        .on_hover_text("Chạy tác vụ này dưới nền (Background Agent)")
-                                        .clicked()
+                                    && icon_btn(
+                                        ui,
+                                        Lucide::PLAY,
+                                        theme.accent_pop,
+                                        Color32::TRANSPARENT,
+                                        "Chạy tác vụ này dưới nền (Background Agent)",
+                                    )
+                                    .clicked()
                                 {
                                     action =
                                         Some(BeeBoxAction::RunBackgroundTask(task.id.clone()));
@@ -853,13 +783,14 @@ pub fn render_beebox_panel(
                     ui.separator();
                     ui.add_space(6.0);
 
-                    // 7. Live Touch Viewport Canvas
+                    // 7. Live Touch Viewport Canvas with 5-Device Preset Switcher & Real ADB Texture
                     ui.horizontal(|ui| {
                         if ui
                             .add(
                                 egui::Button::new(
                                     egui::RichText::new("Live Touch Viewport")
-                                        .color(theme.text_silver)
+                                        .color(theme.text_paper)
+                                        .strong()
                                         .size(10.5),
                                 )
                                 .fill(Color32::TRANSPARENT),
@@ -869,16 +800,14 @@ pub fn render_beebox_panel(
                             beebox_state.show_emulator = !beebox_state.show_emulator;
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new("Snap")
-                                            .color(theme.text_paper)
-                                            .size(10.0),
-                                    )
-                                    .fill(Color32::from_rgb(0x19, 0x19, 0x19)),
-                                )
-                                .clicked()
+                            if icon_btn(
+                                ui,
+                                Lucide::CAMERA,
+                                theme.text_paper,
+                                theme.chip_bg,
+                                "Chụp & đồng bộ khung hình ADB thực tế (Snap)",
+                            )
+                            .clicked()
                             {
                                 action = Some(BeeBoxAction::CaptureAdbFrame);
                             }
@@ -888,14 +817,86 @@ pub fn render_beebox_panel(
                     if beebox_state.show_emulator {
                         ui.add_space(4.0);
 
+                        // 5-Device Preset Icon Bar
+                        ui.horizontal(|ui| {
+                            let preset_icons = [
+                                (0, Lucide::SMARTPHONE),
+                                (1, Lucide::SMARTPHONE),
+                                (2, Lucide::TABLET),
+                                (3, Lucide::LAPTOP),
+                                (4, Lucide::ACTIVITY),
+                            ];
+                            for (idx, ic) in preset_icons {
+                                let p = ELEGANS_VIEWPORT_PRESETS[idx];
+                                let is_sel = emu_state.active_preset_idx == idx;
+                                if icon_btn(
+                                    ui,
+                                    ic,
+                                    if is_sel {
+                                        theme.on_accent
+                                    } else {
+                                        theme.text_silver
+                                    },
+                                    if is_sel {
+                                        theme.accent_pop
+                                    } else {
+                                        theme.chip_bg
+                                    },
+                                    p.name,
+                                )
+                                .clicked()
+                                {
+                                    action = Some(BeeBoxAction::SwitchPreset(idx));
+                                }
+                            }
+                        });
+
+                        ui.add_space(4.0);
+
+                        // Preview URL Quick Row
+                        ui.horizontal(|ui| {
+                            let url_w = (ui.available_width() - 34.0).max(80.0);
+                            Frame::none()
+                                .fill(theme.input_bg)
+                                .rounding(Rounding::same(4.0))
+                                .stroke(Stroke::new(1.0, theme.border))
+                                .inner_margin(Margin::symmetric(6.0, 2.0))
+                                .show(ui, |ui| {
+                                    ui.add_sized(
+                                        vec2(url_w, 16.0),
+                                        egui::TextEdit::singleline(&mut emu_state.preview_url)
+                                            .hint_text("http://localhost:3000")
+                                            .frame(false)
+                                            .text_color(theme.text_paper),
+                                    );
+                                });
+                            if icon_btn(
+                                ui,
+                                Lucide::EXTERNAL_LINK,
+                                theme.accent_pop,
+                                theme.chip_bg,
+                                "Mở Preview URL trên trình duyệt cách ly",
+                            )
+                            .clicked()
+                            {
+                                action = Some(BeeBoxAction::OpenPreviewUrl(
+                                    emu_state.preview_url.clone(),
+                                ));
+                            }
+                        });
+
+                        ui.add_space(4.0);
+
                         let current_preset = ELEGANS_VIEWPORT_PRESETS[emu_state.active_preset_idx];
-                        let emu_w = (ui.available_width() - 8.0).clamp(150.0, 220.0);
-                        let emu_h = emu_w * 1.35;
+                        let aspect = (current_preset.height as f32 / current_preset.width as f32)
+                            .clamp(0.65, 1.65);
+                        let emu_w = (ui.available_width() - 8.0).clamp(150.0, 230.0);
+                        let emu_h = (emu_w * aspect).clamp(120.0, 310.0);
 
                         Frame::none()
-                            .fill(Color32::from_rgb(0x06, 0x06, 0x06))
+                            .fill(theme.code_bg)
                             .rounding(Rounding::same(14.0))
-                            .stroke(Stroke::new(1.0, Color32::from_rgb(0x1E, 0x1E, 0x1E)))
+                            .stroke(Stroke::new(1.0, theme.border_strong))
                             .inner_margin(Margin::same(6.0))
                             .show(ui, |ui| {
                                 let (rect, resp) = ui.allocate_exact_size(
@@ -921,29 +922,52 @@ pub fn render_beebox_panel(
                                 }
 
                                 let painter = ui.painter_at(rect);
-                                painter.text(
-                                    rect.center(),
-                                    Align2::CENTER_CENTER,
-                                    format!(
-                                        "{}\n{}x{}\nLive Tap Ready",
-                                        current_preset
-                                            .name
-                                            .split('(')
-                                            .next()
-                                            .unwrap_or(current_preset.name),
-                                        current_preset.width,
-                                        current_preset.height
-                                    ),
-                                    FontId::proportional(10.0),
-                                    theme.text_silver,
-                                );
+
+                                // Render real ADB screenshot texture if available!
+                                if let Some(ref frame_img) = emu_state.current_frame {
+                                    let tex = ui.ctx().load_texture(
+                                        "adb_live_frame",
+                                        frame_img.clone(),
+                                        TextureOptions::LINEAR,
+                                    );
+                                    painter.image(
+                                        tex.id(),
+                                        rect,
+                                        egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                                        Color32::WHITE,
+                                    );
+                                } else {
+                                    painter.text(
+                                        rect.center(),
+                                        Align2::CENTER_CENTER,
+                                        format!(
+                                            "{}\n{}×{}\n{}",
+                                            current_preset
+                                                .name
+                                                .split('(')
+                                                .next()
+                                                .unwrap_or(current_preset.name)
+                                                .trim(),
+                                            current_preset.width,
+                                            current_preset.height,
+                                            emu_state.status_text
+                                        ),
+                                        FontId::proportional(10.0),
+                                        theme.text_silver,
+                                    );
+                                }
 
                                 if let Some(ref touch) = emu_state.last_touch {
                                     let tap_pt = pos2(
                                         rect.min.x + touch.norm_pos.x * rect.width(),
                                         rect.min.y + touch.norm_pos.y * rect.height(),
                                     );
-                                    painter.circle_filled(tap_pt, 4.0, theme.accent_pop);
+                                    painter.circle_filled(tap_pt, 5.0, theme.accent_pop);
+                                    painter.circle_stroke(
+                                        tap_pt,
+                                        9.0,
+                                        Stroke::new(1.2, theme.accent_pop),
+                                    );
                                 }
                             });
                     }
@@ -961,9 +985,9 @@ fn render_file_change_row(
     action: &mut Option<BeeBoxAction>,
 ) {
     let status_col = match f.status.as_str() {
-        "A" | "?" => Color32::from_rgb(0x4E, 0xC9, 0xB0),
-        "D" => Color32::from_rgb(0xE0, 0x48, 0x48),
-        _ => Color32::from_rgb(0xE5, 0xC0, 0x7B),
+        "A" | "?" => theme.success,
+        "D" => theme.danger,
+        _ => theme.warning,
     };
 
     let file_name = f.path.rsplit('/').next().unwrap_or(&f.path);
@@ -999,15 +1023,14 @@ fn render_file_change_row(
         }
 
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            // Stage / Unstage toggle
+            // Stage / Unstage Icon Toggle
             if f.is_staged {
                 if ui
                     .add(
                         egui::Button::new(
-                            egui::RichText::new("-")
-                                .color(theme.text_silver)
-                                .strong()
-                                .size(11.0),
+                            egui::RichText::new(Lucide::MINUS)
+                                .color(theme.warning)
+                                .size(10.5),
                         )
                         .fill(Color32::TRANSPARENT),
                     )
@@ -1017,21 +1040,20 @@ fn render_file_change_row(
                     *action = Some(BeeBoxAction::UnstageFile(f.path.clone()));
                 }
             } else {
-                // Discard button with confirmation guard
+                // Discard Icon Button with confirmation guard
                 let is_confirming = confirm_discard_path.as_deref() == Some(f.path.as_str());
                 if is_confirming {
                     if ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new("Confirm?")
+                                egui::RichText::new(Lucide::CHECK)
                                     .color(Color32::WHITE)
-                                    .strong()
-                                    .size(9.0),
+                                    .size(10.0),
                             )
-                            .fill(theme.tag_red)
+                            .fill(theme.danger)
                             .rounding(Rounding::same(3.0)),
                         )
-                        .on_hover_text("Click lần nữa để khôi phục file về HEAD")
+                        .on_hover_text("Xác nhận khôi phục file về HEAD")
                         .clicked()
                     {
                         *confirm_discard_path = None;
@@ -1040,7 +1062,7 @@ fn render_file_change_row(
                 } else if ui
                     .add(
                         egui::Button::new(
-                            egui::RichText::new(Lucide::TRASH)
+                            egui::RichText::new(Lucide::ROTATE_CCW)
                                 .color(theme.text_silver)
                                 .size(10.0),
                         )
@@ -1056,7 +1078,7 @@ fn render_file_change_row(
                     .add(
                         egui::Button::new(
                             egui::RichText::new(Lucide::PLUS)
-                                .color( Color32::from_rgb(0x4E, 0xC9, 0xB0))
+                                .color(theme.success)
                                 .size(10.5),
                         )
                         .fill(Color32::TRANSPARENT),
@@ -1068,11 +1090,11 @@ fn render_file_change_row(
                 }
             }
 
-            // Direct Live Edit Button
+            // Direct Live Edit Icon Button
             if ui
                 .add(
                     egui::Button::new(
-                        egui::RichText::new(Lucide::CODE)
+                        egui::RichText::new(Lucide::EDIT)
                             .color(theme.text_silver)
                             .size(10.0),
                     )
