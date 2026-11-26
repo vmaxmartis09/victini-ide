@@ -58,8 +58,10 @@ pub fn run_slice(args: &[String]) -> i32 {
         "@fe:slice{{\"file\":\"{}\",\"range\":\"{}:{}\",\"total\":{}}}",
         file_path, start, end, total
     );
-    for idx in (start.saturating_sub(1))..end.min(total) {
-        println!("{:>4} | {}", idx + 1, lines[idx]);
+    let start_idx = start.saturating_sub(1);
+    let end_idx = end.min(total);
+    for (offset, line) in lines[start_idx..end_idx].iter().enumerate() {
+        println!("{:>4} | {}", start_idx + offset + 1, line);
     }
     0
 }

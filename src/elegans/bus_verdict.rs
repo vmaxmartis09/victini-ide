@@ -139,15 +139,15 @@ pub fn run_qa_filter(args: &[String]) -> i32 {
     let mut net_errors = Vec::new();
     for line in raw.lines() {
         let lc = line.to_lowercase();
-        if lc.contains("error") || lc.contains("uncaught") || lc.contains("hydration") {
-            if console_errors.len() < 5 {
-                console_errors.push(line.chars().take(120).collect::<String>());
-            }
+        if (lc.contains("error") || lc.contains("uncaught") || lc.contains("hydration"))
+            && console_errors.len() < 5
+        {
+            console_errors.push(line.chars().take(120).collect::<String>());
         }
-        if lc.contains(" 404 ") || lc.contains(" 500 ") || lc.contains(" 502 ") || lc.contains("cors") {
-            if net_errors.len() < 5 {
-                net_errors.push(line.chars().take(120).collect::<String>());
-            }
+        if (lc.contains(" 404 ") || lc.contains(" 500 ") || lc.contains(" 502 ") || lc.contains("cors"))
+            && net_errors.len() < 5
+        {
+            net_errors.push(line.chars().take(120).collect::<String>());
         }
     }
 

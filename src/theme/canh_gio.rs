@@ -1,12 +1,13 @@
 use egui::Color32;
 
-/// Warm, Eye-Friendly Color System for Victini IDE:
-/// - Warm Dark ("Tối Ấm — Warm Espresso"): Soft warm charcoal & espresso tones (#181614 / #1F1D1A / #282521),
-///   warm cream typography (#F2ECE1), muted warm stone (#A69E93), warm terracotta accent (#D97757).
-/// - Warm Light ("Sáng Ấm — Warm Paper"): Soft warm paper & ivory tones (#F6F3EC / #EFECE4 / #FAF8F5),
-///   deep espresso ink text (#26231F), warm umber muted text (#6E675F), warm terracotta accent (#C86446).
-/// - Warm Dusk ("Chiều Tà — Soft Slate"): Balanced warm slate dark mode (#1B1E23 / #22262C / #2A2F37).
+// Warm, Eye-Friendly Color System for Victini IDE:
+// - Warm Dark ("Tối Ấm — Warm Espresso"): Soft warm charcoal & espresso tones (#181614 / #1F1D1A / #282521),
+//   warm cream typography (#F2ECE1), muted warm stone (#A69E93), warm terracotta accent (#D97757).
+// - Warm Light ("Sáng Ấm — Warm Paper"): Soft warm paper & ivory tones (#F6F3EC / #EFECE4 / #FAF8F5),
+//   deep espresso ink text (#26231F), warm umber muted text (#6E675F), warm terracotta accent (#C86446).
+// - Warm Dusk ("Chiều Tà — Soft Slate"): Balanced warm slate dark mode (#1B1E23 / #22262C / #2A2F37).
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CanhId {
     WarmDark,  // Default Warm Espresso Dark

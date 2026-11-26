@@ -1395,8 +1395,6 @@ fn render_skill_detail(
             let sel = state.detail_tab == t;
             let suffix = if t == SkillDetailTab::Edit && state.skill_draft.dirty {
                 " ●"
-            } else if t == SkillDetailTab::Files {
-                ""
             } else {
                 ""
             };

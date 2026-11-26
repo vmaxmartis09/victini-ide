@@ -11,8 +11,9 @@ pub enum MessageRole {
     System,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ThreadAgentMode {
+    #[default]
     SwarmAuto,
     DedicatedCore(ElegansAgent),
     DedicatedCustom {
@@ -20,12 +21,6 @@ pub enum ThreadAgentMode {
         role: String,
         system_prompt: String,
     },
-}
-
-impl Default for ThreadAgentMode {
-    fn default() -> Self {
-        Self::SwarmAuto
-    }
 }
 
 impl ThreadAgentMode {

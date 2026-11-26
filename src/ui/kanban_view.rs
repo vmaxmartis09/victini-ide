@@ -918,8 +918,7 @@ fn render_four_column_board(
                                                 if col_type == KanbanColumn::Done
                                                     && !composer.done_show_all
                                                     && total_in_col > 5
-                                                {
-                                                    if ui
+                                                    && ui
                                                         .add(
                                                             egui::Button::new(
                                                                 egui::RichText::new(format!(
@@ -933,9 +932,8 @@ fn render_four_column_board(
                                                             .rounding(Rounding::same(5.0)),
                                                         )
                                                         .clicked()
-                                                    {
-                                                        composer.done_show_all = true;
-                                                    }
+                                                {
+                                                    composer.done_show_all = true;
                                                 }
                                             }
                                         });

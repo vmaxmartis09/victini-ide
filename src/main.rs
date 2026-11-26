@@ -447,28 +447,25 @@ impl VictiniApp {
 
         for token in prompt_to_send.split_whitespace() {
             if let Some(f_tok) = token.strip_prefix('@') {
-                if self.workspace_files.iter().any(|wf| wf == f_tok)
-                    || self.file_changes.iter().any(|fc| fc.path == f_tok)
-                {
-                    if !self
+                if (self.workspace_files.iter().any(|wf| wf == f_tok)
+                    || self.file_changes.iter().any(|fc| fc.path == f_tok))
+                    && !self
                         .chat_mgr
                         .active_thread()
                         .attached_files
                         .contains(&f_tok.to_string())
-                    {
-                        self.chat_mgr.toggle_attached_file(f_tok.to_string());
-                    }
+                {
+                    self.chat_mgr.toggle_attached_file(f_tok.to_string());
                 }
             } else if let Some(s_tok) = token.strip_prefix('$') {
-                if self.discovered_skills.iter().any(|sk| sk.name == s_tok) {
-                    if !self
+                if self.discovered_skills.iter().any(|sk| sk.name == s_tok)
+                    && !self
                         .chat_mgr
                         .active_thread()
                         .attached_skills
                         .contains(&s_tok.to_string())
-                    {
-                        self.chat_mgr.toggle_attached_skill(s_tok.to_string());
-                    }
+                {
+                    self.chat_mgr.toggle_attached_skill(s_tok.to_string());
                 }
             }
         }

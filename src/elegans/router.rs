@@ -268,15 +268,14 @@ pub fn find_reusable_candidates(root: &Path, prompt_lc: &str) -> Vec<String> {
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            if keywords.iter().any(|k| name_lc.contains(k))
+            if (keywords.iter().any(|k| name_lc.contains(k))
                 || matches!(
                     name_lc.as_str(),
                     "icons" | "button" | "card" | "confirm" | "preview" | "motion" | "reveal"
-                )
+                ))
+                && !out.contains(&rel)
             {
-                if !out.contains(&rel) {
-                    out.push(rel);
-                }
+                out.push(rel);
             }
             if out.len() >= 6 {
                 return out;
