@@ -1,7 +1,10 @@
 use crate::ai::{ChatSessionManager, ElegansAgent, ALL_AGENTS};
 use crate::config::{DiscoveredAgent, DiscoveredSkill, ProjectManager};
 use crate::git::GitFileChange;
-use crate::theme::{CanhTheme, Lucide};
+use crate::theme::{
+    CanhTheme, Lucide, CTL_DEFAULT, CTL_SM, FONT_BODY, FONT_CAPTION, FONT_FOOTNOTE, ROUND_CTL,
+    ROUND_XS, SPACE_1, SPACE_2, SPACE_3,
+};
 use crate::ui::header::icon_btn;
 use crate::ui::layout_state::CenterViewMode;
 use egui::{pos2, vec2, Align, Color32, Frame, Layout, Margin, Rounding, ScrollArea, Stroke, Ui};
@@ -39,7 +42,7 @@ pub fn render_qoder_sidebar(
     ui: &mut Ui,
     theme: &CanhTheme,
     is_mini: bool,
-    active_mode: CenterViewMode,
+    _active_mode: CenterViewMode,
     project_mgr: &ProjectManager,
     project_chats: &HashMap<PathBuf, ChatSessionManager>,
     active_chat_mgr: &ChatSessionManager,
@@ -52,11 +55,12 @@ pub fn render_qoder_sidebar(
     agents: &[DiscoveredAgent],
 ) -> Option<SidebarAction> {
     let mut action = None;
+    ui.spacing_mut().item_spacing = vec2(SPACE_2, SPACE_1);
 
-    // 1. MINI RAIL MODE (Compact 54px Icon Rail)
+    // 1. MINI RAIL MODE (Compact 48px Rail on 4px Grid)
     if is_mini {
         ui.vertical_centered(|ui| {
-            ui.add_space(6.0);
+            ui.add_space(SPACE_2);
             if icon_btn(
                 ui,
                 Lucide::PANEL_LEFT,
@@ -68,165 +72,86 @@ pub fn render_qoder_sidebar(
             {
                 action = Some(SidebarAction::ToggleMiniMode);
             }
-            ui.add_space(8.0);
+            ui.add_space(SPACE_2);
+            // Primary CTA in Ink color per Elegans rule
             if icon_btn(
                 ui,
                 Lucide::PLUS,
-                theme.on_accent,
-                theme.accent_pop,
-                "Tạo phiên Chat mới",
+                theme.text_on_ink(),
+                theme.text_paper,
+                "Tạo phiên hội thoại mới",
             )
             .clicked()
             {
                 action = Some(SidebarAction::NewChatThread);
             }
-            ui.add_space(6.0);
+            ui.add_space(SPACE_2);
             if icon_btn(
                 ui,
-                Lucide::MESSAGE_SQUARE,
-                if !*show_agents_tab && active_mode == CenterViewMode::ChatTimeline {
-                    theme.accent_pop
+                Lucide::FOLDER,
+                if !*show_agents_tab {
+                    theme.text_paper
                 } else {
                     theme.text_silver
                 },
-                Color32::TRANSPARENT,
-                "Cây thư mục Project & Phiên Chat",
+                if !*show_agents_tab {
+                    theme.surface_2
+                } else {
+                    Color32::TRANSPARENT
+                },
+                "Cây thư mục Project & Hội thoại",
             )
             .clicked()
             {
                 *show_agents_tab = false;
                 action = Some(SidebarAction::ToggleMiniMode);
             }
-            ui.add_space(6.0);
+            ui.add_space(SPACE_1);
             if icon_btn(
                 ui,
                 Lucide::BOT,
                 if *show_agents_tab {
-                    theme.accent_pop
+                    theme.text_paper
                 } else {
                     theme.text_silver
                 },
-                Color32::TRANSPARENT,
-                "Danh sách Agent 1-1 & Skills",
+                if *show_agents_tab {
+                    theme.surface_2
+                } else {
+                    Color32::TRANSPARENT
+                },
+                "Chọn Agent Chat 1-1 chuyên biệt",
             )
             .clicked()
             {
                 *show_agents_tab = true;
                 action = Some(SidebarAction::ToggleMiniMode);
             }
-            ui.add_space(6.0);
-            if icon_btn(
-                ui,
-                Lucide::KANBAN,
-                if active_mode == CenterViewMode::KanbanBoard {
-                    theme.accent_pop
-                } else {
-                    theme.text_silver
-                },
-                Color32::TRANSPARENT,
-                "Bảng Swarm Kanban (⌘K)",
-            )
-            .clicked()
-            {
-                action = Some(SidebarAction::SwitchCenterView(CenterViewMode::KanbanBoard));
-            }
-            ui.add_space(6.0);
-            let theme_ic = if theme.is_dark {
-                Lucide::SUN
-            } else {
-                Lucide::MOON
-            };
-            if icon_btn(
-                ui,
-                theme_ic,
-                theme.text_silver,
-                Color32::TRANSPARENT,
-                "Đổi Sáng / Tối (⌘L)",
-            )
-            .clicked()
-            {
-                action = Some(SidebarAction::ToggleLightDark);
-            }
         });
         return action;
     }
 
-    // 2. FULL SIDEBAR: ANTIGRAVITY WORKSPACE TREE & AGENT LAUNCHER
+    // 2. FULL SIDEBAR: ELEGANS FRAMED-SHEET WORKSPACE TREE (Zero nested-box clutter, strict 4px grid)
     ui.vertical(|ui| {
-        // Top Brand & Quick Collapse Row
-        ui.add_space(2.0);
+        // Search Input (28px height, ROUND_CTL = 8px) + Ink Primary New Chat CTA (28x28)
         ui.horizontal(|ui| {
-            let (rect, _) = ui.allocate_exact_size(vec2(16.0, 16.0), egui::Sense::hover());
-            ui.painter().rect_filled(
-                rect,
-                Rounding::same(4.0),
-                theme.accent_surface,
-            );
-            ui.painter()
-                .circle_filled(rect.center(), 3.2, theme.accent_pop);
-
-            ui.add_space(4.0);
-            ui.label(
-                egui::RichText::new("VICTINI")
-                    .color(theme.text_paper)
-                    .strong()
-                    .size(12.5),
-            );
-            ui.label(
-                egui::RichText::new("Studio")
-                    .color(theme.text_silver)
-                    .size(11.5),
-            );
-
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if icon_btn(
-                    ui,
-                    Lucide::CHEVRON_LEFT,
-                    theme.text_silver,
-                    Color32::TRANSPARENT,
-                    "Thu gọn Sidebar (⌘B)",
-                )
-                .clicked()
-                {
-                    action = Some(SidebarAction::ToggleMiniMode);
-                }
-                if icon_btn(
-                    ui,
-                    Lucide::FOLDER_PLUS,
-                    theme.text_silver,
-                    Color32::TRANSPARENT,
-                    "Thêm hoặc quản lý Projects / Workspaces",
-                )
-                .clicked()
-                {
-                    action = Some(SidebarAction::SwitchCenterView(
-                        CenterViewMode::ProjectsModal,
-                    ));
-                }
-            });
-        });
-
-        ui.add_space(8.0);
-
-        // Search Box + New Chat CTA
-        ui.horizontal(|ui| {
-            let search_w = (ui.available_width() - 34.0).max(80.0);
+            let search_w = (ui.available_width() - 36.0).max(80.0);
             Frame::none()
                 .fill(theme.input_bg)
-                .rounding(Rounding::same(6.0))
+                .rounding(Rounding::same(ROUND_CTL))
                 .stroke(Stroke::new(1.0, theme.border))
-                .inner_margin(Margin::symmetric(8.0, 4.0))
+                .inner_margin(Margin::symmetric(SPACE_2, SPACE_1))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new(Lucide::SEARCH)
                                 .color(theme.text_silver)
-                                .size(11.0),
+                                .size(FONT_CAPTION),
                         );
                         ui.add_sized(
-                            vec2((search_w - 22.0).max(40.0), 18.0),
+                            vec2((search_w - 28.0).max(40.0), 20.0),
                             egui::TextEdit::singleline(search_query)
-                                .hint_text("Tìm project, chat, agent...")
+                                .hint_text("Tìm project, hội thoại...")
                                 .frame(false)
                                 .text_color(theme.text_paper),
                         );
@@ -234,12 +159,13 @@ pub fn render_qoder_sidebar(
                 });
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                // Elegans Primary Button: Ink fill (`theme.text_paper`), contrasting text (`theme.text_on_ink()`)
                 if icon_btn(
                     ui,
                     Lucide::PLUS,
-                    theme.on_accent,
-                    theme.accent_pop,
-                    "Tạo phiên Chat mới trong Project đang mở",
+                    theme.text_on_ink(),
+                    theme.text_paper,
+                    "Tạo hội thoại mới trong Project đang mở",
                 )
                 .clicked()
                 {
@@ -249,23 +175,24 @@ pub fn render_qoder_sidebar(
             });
         });
 
-        ui.add_space(8.0);
+        ui.add_space(SPACE_2);
 
-        // Clean 2-Segment Mode Switcher: [ Projects & Chats ] | [ Agents 1-1 ]
+        // Clean 2-Segment Mode Switcher: [ Projects (N) ] | [ Agents (M) ] (Concentric 8px outer -> 4px inner)
         Frame::none()
-            .fill(theme.input_bg)
-            .rounding(Rounding::same(6.0))
+            .fill(theme.surface_1)
+            .rounding(Rounding::same(ROUND_CTL))
             .stroke(Stroke::new(1.0, theme.border))
-            .inner_margin(Margin::same(2.0))
+            .inner_margin(Margin::same(SPACE_1))
             .show(ui, |ui| {
+                ui.spacing_mut().item_spacing = vec2(SPACE_1, 0.0);
                 ui.horizontal(|ui| {
-                    let half_w = (ui.available_width() - 4.0) * 0.5;
+                    let half_w = (ui.available_width() - SPACE_1) * 0.5;
                     let total_projects = project_mgr.projects.len();
 
                     let chats_sel = !*show_agents_tab;
                     let chats_btn = egui::Button::new(
                         egui::RichText::new(format!(
-                            "{} Projects ({})",
+                            "{} Projects · {}",
                             Lucide::FOLDER,
                             total_projects
                         ))
@@ -275,18 +202,18 @@ pub fn render_qoder_sidebar(
                             theme.text_silver
                         })
                         .strong()
-                        .size(11.0),
+                        .size(FONT_CAPTION),
                     )
                     .fill(if chats_sel {
                         theme.surface_2
                     } else {
                         Color32::TRANSPARENT
                     })
-                    .rounding(Rounding::same(4.5));
+                    .rounding(Rounding::same(ROUND_XS));
 
                     if ui
-                        .add_sized(vec2(half_w, 24.0), chats_btn)
-                        .on_hover_text("Danh sách các phiên Chat phân nhóm theo từng Project")
+                        .add_sized(vec2(half_w, CTL_SM), chats_btn)
+                        .on_hover_text("Cây hội thoại phân nhóm theo từng Project")
                         .clicked()
                     {
                         *show_agents_tab = false;
@@ -295,7 +222,7 @@ pub fn render_qoder_sidebar(
                     let agents_sel = *show_agents_tab;
                     let agents_btn = egui::Button::new(
                         egui::RichText::new(format!(
-                            "{} Agents ({})",
+                            "{} Agents · {}",
                             Lucide::BOT,
                             ALL_AGENTS.len() + agents.len()
                         ))
@@ -305,18 +232,18 @@ pub fn render_qoder_sidebar(
                             theme.text_silver
                         })
                         .strong()
-                        .size(11.0),
+                        .size(FONT_CAPTION),
                     )
                     .fill(if agents_sel {
                         theme.surface_2
                     } else {
                         Color32::TRANSPARENT
                     })
-                    .rounding(Rounding::same(4.5));
+                    .rounding(Rounding::same(ROUND_XS));
 
                     if ui
-                        .add_sized(vec2(half_w, 24.0), agents_btn)
-                        .on_hover_text("Chọn Agent Chat 1-1 chuyên biệt hoặc mở Skill Studio")
+                        .add_sized(vec2(half_w, CTL_SM), agents_btn)
+                        .on_hover_text("Danh sách Agent Chat 1-1 chuyên biệt")
                         .clicked()
                     {
                         *show_agents_tab = true;
@@ -324,19 +251,21 @@ pub fn render_qoder_sidebar(
                 });
             });
 
-        ui.add_space(8.0);
+        ui.add_space(SPACE_3);
 
-        // 3. MAIN SCROLLABLE TREE: MULTI-PROJECT WORKSPACE CHATS OR AGENTS
+        // 3. MAIN SCROLLABLE LIST (Flat-at-Rest rows, strict 4px spacing, >= 11px typography)
         let q = search_query.trim().to_lowercase();
-        let bottom_reserve = 78.0;
+        let bottom_reserve = 48.0;
         ScrollArea::vertical()
-            .id_salt("victini_multi_project_sidebar_scroll")
+            .id_salt("elegans_multi_project_sidebar_scroll")
             .auto_shrink([false, false])
             .max_height((ui.available_height() - bottom_reserve).max(120.0))
             .show(ui, |ui| {
+                ui.spacing_mut().item_spacing = vec2(SPACE_1, SPACE_1);
+
                 if !*show_agents_tab {
                     // =========================================================
-                    // TAB A: MULTI-PROJECT -> CHAT THREADS TREE (AGY STYLE)
+                    // TAB A: FLAT-AT-REST MULTI-PROJECT -> THREADS TREE
                     // =========================================================
                     for proj in &project_mgr.projects {
                         let is_active_proj = proj.path == project_mgr.active_project;
@@ -349,7 +278,6 @@ pub fn render_qoder_sidebar(
                         let threads_slice = mgr.map(|m| m.threads.as_slice()).unwrap_or(&[]);
                         let active_idx = mgr.map(|m| m.active_thread_idx).unwrap_or(0);
 
-                        // Filter check when searching
                         let proj_matches_q =
                             q.is_empty() || proj.name.to_lowercase().contains(&q);
                         let any_thread_matches_q = threads_slice.iter().any(|t| {
@@ -362,109 +290,73 @@ pub fn render_qoder_sidebar(
                             continue;
                         }
 
-                        // Project Group Header Row
                         let is_expanded = proj.expanded || !q.is_empty();
                         let chev = if is_expanded {
                             Lucide::CHEVRON_DOWN
                         } else {
                             Lucide::CHEVRON_RIGHT
                         };
-                        let hdr_bg = if is_active_proj {
-                            theme.surface_1
+                        let proj_branch = if is_active_proj {
+                            branch_name
                         } else {
-                            Color32::TRANSPARENT
-                        };
-                        let hdr_border = if is_active_proj {
-                            theme.border
-                        } else {
-                            Color32::TRANSPARENT
+                            proj.last_branch.as_str()
                         };
 
-                        Frame::none()
-                            .fill(hdr_bg)
-                            .rounding(Rounding::same(6.0))
-                            .stroke(Stroke::new(1.0, hdr_border))
-                            .inner_margin(Margin::symmetric(6.0, 4.5))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    // Expand/Collapse Project Toggle Button
-                                    let folder_col = if is_active_proj {
-                                        theme.accent_pop
-                                    } else {
-                                        theme.text_silver
-                                    };
-                                    let proj_branch = if is_active_proj {
-                                        branch_name
-                                    } else {
-                                        proj.last_branch.as_str()
-                                    };
+                        // Clean Flat Project Group Row (28px height, no border box clutter)
+                        ui.horizontal(|ui| {
+                            let label_col = if is_active_proj {
+                                theme.text_paper
+                            } else {
+                                theme.text_silver
+                            };
+                            let btn = egui::Button::new(
+                                egui::RichText::new(format!(
+                                    "{} {} {}",
+                                    chev,
+                                    Lucide::FOLDER,
+                                    proj.name
+                                ))
+                                .color(label_col)
+                                .strong()
+                                .size(FONT_FOOTNOTE),
+                            )
+                            .fill(Color32::TRANSPARENT)
+                            .rounding(Rounding::same(ROUND_CTL));
 
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new(format!(
-                                                    "{} {} {}",
-                                                    chev,
-                                                    Lucide::FOLDER,
-                                                    proj.name
-                                                ))
-                                                .color(if is_active_proj {
-                                                    theme.text_paper
-                                                } else {
-                                                    theme.text_silver
-                                                })
-                                                .strong()
-                                                .size(11.5),
-                                            )
-                                            .fill(Color32::TRANSPARENT),
-                                        )
-                                        .on_hover_text(format!(
-                                            "Project: {}\nNhánh: {}\nClick để đóng/mở nhóm hội thoại",
-                                            proj.path.display(),
-                                            proj_branch
-                                        ))
-                                        .clicked()
-                                    {
-                                        action = Some(SidebarAction::ToggleProjectExpand(
-                                            proj.path.clone(),
-                                        ));
-                                    }
+                            if ui
+                                .add_sized(vec2(0.0, CTL_DEFAULT), btn)
+                                .on_hover_text(format!(
+                                    "{}\nNhánh: {} · {} hội thoại",
+                                    proj.path.display(),
+                                    proj_branch,
+                                    threads_slice.len()
+                                ))
+                                .clicked()
+                            {
+                                action = Some(SidebarAction::ToggleProjectExpand(
+                                    proj.path.clone(),
+                                ));
+                            }
 
-                                    ui.label(
-                                        egui::RichText::new(format!("({})", threads_slice.len()))
-                                            .color(folder_col)
-                                            .size(10.0),
-                                    );
-
-                                    // Right side of Project header: [+ New Chat in this project]
-                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                        if icon_btn(
-                                            ui,
-                                            Lucide::PLUS,
-                                            if is_active_proj {
-                                                theme.accent_pop
-                                            } else {
-                                                theme.text_silver
-                                            },
-                                            Color32::TRANSPARENT,
-                                            &format!(
-                                                "Tạo hội thoại mới trong project '{}'",
-                                                proj.name
-                                            ),
-                                        )
-                                        .clicked()
-                                        {
-                                            action = Some(SidebarAction::NewProjectChatThread(
-                                                proj.path.clone(),
-                                            ));
-                                        }
-                                    });
-                                });
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if icon_btn(
+                                    ui,
+                                    Lucide::PLUS,
+                                    theme.text_silver,
+                                    Color32::TRANSPARENT,
+                                    &format!("Hội thoại mới trong '{}'", proj.name),
+                                )
+                                .clicked()
+                                {
+                                    action = Some(SidebarAction::NewProjectChatThread(
+                                        proj.path.clone(),
+                                    ));
+                                }
                             });
+                        });
 
-                        // Nested Threads inside this Project
+                        // Nested Single-Line Threads (28px height, clean tree guide line)
                         if is_expanded {
-                            ui.add_space(2.0);
                             let can_delete = threads_slice.len() > 1;
 
                             for (idx, t) in threads_slice.iter().enumerate() {
@@ -479,28 +371,23 @@ pub fn render_qoder_sidebar(
 
                                 let is_selected = is_active_proj && idx == active_idx;
                                 let row_bg = if is_selected {
-                                    theme.panel_bg
-                                } else {
-                                    Color32::TRANSPARENT
-                                };
-                                let row_border = if is_selected {
-                                    theme.border_strong
+                                    theme.surface_2
                                 } else {
                                     Color32::TRANSPARENT
                                 };
 
                                 let mut delete_clicked = false;
                                 ui.horizontal(|ui| {
-                                    // Tree indent + vertical guide line
+                                    // 16px Tree Indent + 1px Vertical Guide Line (< 3% accent only on selected thread)
                                     let (indent_rect, _) = ui.allocate_exact_size(
-                                        vec2(12.0, 36.0),
+                                        vec2(16.0, CTL_DEFAULT),
                                         egui::Sense::hover(),
                                     );
                                     let line_x = indent_rect.center().x;
                                     ui.painter().line_segment(
                                         [
-                                            pos2(line_x, indent_rect.top()),
-                                            pos2(line_x, indent_rect.bottom()),
+                                            pos2(line_x, indent_rect.top() + 2.0),
+                                            pos2(line_x, indent_rect.bottom() - 2.0),
                                         ],
                                         Stroke::new(
                                             if is_selected { 2.0 } else { 1.0 },
@@ -512,98 +399,62 @@ pub fn render_qoder_sidebar(
                                         ),
                                     );
 
-                                    let card_w = (ui.available_width() - 2.0).max(100.0);
+                                    let row_w = ui.available_width().max(80.0);
                                     let resp = Frame::none()
                                         .fill(row_bg)
-                                        .rounding(Rounding::same(6.0))
-                                        .stroke(Stroke::new(1.0, row_border))
-                                        .inner_margin(Margin::symmetric(8.0, 5.0))
+                                        .rounding(Rounding::same(ROUND_CTL))
+                                        .inner_margin(Margin::symmetric(SPACE_2, SPACE_1))
                                         .show(ui, |ui| {
-                                            ui.set_width((card_w - 18.0).max(80.0));
-                                            ui.vertical(|ui| {
-                                                // Line 1: Thread Title + Delete button
-                                                ui.horizontal(|ui| {
-                                                    let short_title: String =
-                                                        t.title.chars().take(24).collect();
-                                                    let display_title =
-                                                        if t.title.chars().count() > 24 {
-                                                            format!("{}…", short_title)
+                                            ui.set_width((row_w - 16.0).max(64.0));
+                                            ui.horizontal(|ui| {
+                                                let short_title: String =
+                                                    t.title.chars().take(22).collect();
+                                                let display_title =
+                                                    if t.title.chars().count() > 22 {
+                                                        format!("{}…", short_title)
+                                                    } else {
+                                                        short_title
+                                                    };
+                                                ui.label(
+                                                    egui::RichText::new(display_title)
+                                                        .color(if is_selected {
+                                                            theme.text_paper
                                                         } else {
-                                                            short_title
-                                                        };
-                                                    ui.label(
-                                                        egui::RichText::new(display_title)
-                                                            .color(if is_selected {
-                                                                theme.text_paper
-                                                            } else {
-                                                                theme.text_silver
-                                                            })
-                                                            .strong()
-                                                            .size(11.3),
-                                                    );
+                                                            theme.text_silver
+                                                        })
+                                                        .size(FONT_FOOTNOTE),
+                                                );
 
-                                                    ui.with_layout(
-                                                        Layout::right_to_left(Align::Center),
-                                                        |ui| {
-                                                            if can_delete
-                                                                && ui
-                                                                    .add(
-                                                                        egui::Button::new(
-                                                                            egui::RichText::new(
-                                                                                Lucide::TRASH,
-                                                                            )
-                                                                            .color(
-                                                                                theme.text_silver,
-                                                                            )
-                                                                            .size(9.5),
+                                                ui.with_layout(
+                                                    Layout::right_to_left(Align::Center),
+                                                    |ui| {
+                                                        if can_delete
+                                                            && ui
+                                                                .add(
+                                                                    egui::Button::new(
+                                                                        egui::RichText::new(
+                                                                            Lucide::X,
                                                                         )
-                                                                        .fill(Color32::TRANSPARENT),
+                                                                        .color(theme.text_silver)
+                                                                        .size(FONT_CAPTION),
                                                                     )
-                                                                    .on_hover_text(
-                                                                        "Xóa phiên hội thoại này",
-                                                                    )
-                                                                    .clicked()
-                                                            {
-                                                                delete_clicked = true;
-                                                            }
+                                                                    .fill(Color32::TRANSPARENT),
+                                                                )
+                                                                .on_hover_text(
+                                                                    "Xóa phiên hội thoại này",
+                                                                )
+                                                                .clicked()
+                                                        {
+                                                            delete_clicked = true;
+                                                        } else {
                                                             ui.label(
                                                                 egui::RichText::new(&t.updated_at)
                                                                     .color(theme.text_silver)
-                                                                    .size(9.5),
+                                                                    .size(FONT_CAPTION),
                                                             );
-                                                        },
-                                                    );
-                                                });
-
-                                                // Line 2: Branch + Agent Mode
-                                                ui.horizontal(|ui| {
-                                                    ui.label(
-                                                        egui::RichText::new(format!(
-                                                            "{} {}",
-                                                            Lucide::GIT_BRANCH,
-                                                            t.branch
-                                                        ))
-                                                        .color(theme.text_silver)
-                                                        .size(9.5),
-                                                    );
-                                                    ui.with_layout(
-                                                        Layout::right_to_left(Align::Center),
-                                                        |ui| {
-                                                            let tag_col = if is_selected {
-                                                                theme.accent_pop
-                                                            } else {
-                                                                theme.text_silver
-                                                            };
-                                                            ui.label(
-                                                                egui::RichText::new(
-                                                                    t.agent_mode.short_tag(),
-                                                                )
-                                                                .color(tag_col)
-                                                                .size(9.5),
-                                                            );
-                                                        },
-                                                    );
-                                                });
+                                                        }
+                                                    },
+                                                );
                                             });
                                         });
 
@@ -615,6 +466,12 @@ pub fn render_qoder_sidebar(
                                     } else if resp
                                         .response
                                         .interact(egui::Sense::click())
+                                        .on_hover_text(format!(
+                                            "{}\nNhánh: {} · Agent: {}",
+                                            t.title,
+                                            t.branch,
+                                            t.agent_mode.short_tag()
+                                        ))
                                         .clicked()
                                     {
                                         action = Some(SidebarAction::SelectProjectThread {
@@ -623,27 +480,27 @@ pub fn render_qoder_sidebar(
                                         });
                                     }
                                 });
-                                ui.add_space(2.0);
                             }
-                            ui.add_space(4.0);
                         }
-                        ui.add_space(3.0);
+                        ui.add_space(SPACE_1);
                     }
 
-                    ui.add_space(4.0);
+                    // Elegans Smart Empty/Add State: Dashed-style subtle action row at end of list
+                    ui.add_space(SPACE_2);
                     if ui
-                        .add(
+                        .add_sized(
+                            vec2(ui.available_width(), CTL_DEFAULT),
                             egui::Button::new(
                                 egui::RichText::new(format!(
-                                    "{} Thêm / Quản lý Project...",
+                                    "{} Thêm Project vào Workspace...",
                                     Lucide::FOLDER_PLUS
                                 ))
                                 .color(theme.text_silver)
-                                .size(10.8),
+                                .size(FONT_CAPTION),
                             )
-                            .fill(theme.surface_1)
+                            .fill(Color32::TRANSPARENT)
                             .stroke(Stroke::new(1.0, theme.border))
-                            .rounding(Rounding::same(6.0)),
+                            .rounding(Rounding::same(ROUND_CTL)),
                         )
                         .clicked()
                     {
@@ -653,31 +510,31 @@ pub fn render_qoder_sidebar(
                     }
                 } else {
                     // =========================================================
-                    // TAB B: DEDICATED 1-ON-1 AGENT LAUNCHER & SKILL STUDIO CARD
+                    // TAB B: CLEAN FLAT AGENT 1-ON-1 LIST (Sentence case, >= 11px)
                     // =========================================================
                     let swarm_resp = Frame::none()
-                        .fill(theme.panel_bg)
-                        .rounding(Rounding::same(6.0))
-                        .stroke(Stroke::new(1.0, theme.border))
-                        .inner_margin(Margin::symmetric(8.0, 6.0))
+                        .fill(theme.surface_1)
+                        .rounding(Rounding::same(ROUND_CTL))
+                        .inner_margin(Margin::symmetric(SPACE_2, SPACE_2))
                         .show(ui, |ui| {
+                            ui.set_width((ui.available_width() - 16.0).max(80.0));
                             ui.horizontal(|ui| {
                                 ui.label(
                                     egui::RichText::new(Lucide::SPARKLES)
                                         .color(theme.accent_pop)
-                                        .size(13.0),
+                                        .size(FONT_BODY),
                                 );
                                 ui.vertical(|ui| {
                                     ui.label(
                                         egui::RichText::new("Swarm Auto-Router")
                                             .color(theme.text_paper)
                                             .strong()
-                                            .size(11.2),
+                                            .size(FONT_FOOTNOTE),
                                     );
                                     ui.label(
-                                        egui::RichText::new("Tự động chọn Agent theo câu hỏi")
+                                        egui::RichText::new("Tự động điều phối Agent theo câu hỏi")
                                             .color(theme.text_silver)
-                                            .size(9.5),
+                                            .size(FONT_CAPTION),
                                     );
                                 });
                             });
@@ -687,7 +544,7 @@ pub fn render_qoder_sidebar(
                         action = Some(SidebarAction::SwitchToSwarmAuto);
                     }
 
-                    ui.add_space(6.0);
+                    ui.add_space(SPACE_2);
 
                     for &ag in ALL_AGENTS {
                         if !q.is_empty()
@@ -697,35 +554,28 @@ pub fn render_qoder_sidebar(
                             continue;
                         }
                         let card_resp = Frame::none()
-                            .fill(theme.panel_bg)
-                            .rounding(Rounding::same(6.0))
-                            .stroke(Stroke::new(1.0, theme.border))
-                            .inner_margin(Margin::symmetric(8.0, 6.0))
+                            .fill(Color32::TRANSPARENT)
+                            .rounding(Rounding::same(ROUND_CTL))
+                            .inner_margin(Margin::symmetric(SPACE_2, SPACE_1))
                             .show(ui, |ui| {
+                                ui.set_width((ui.available_width() - 16.0).max(80.0));
                                 ui.horizontal(|ui| {
                                     ui.label(
                                         egui::RichText::new(ag.icon())
-                                            .color(theme.accent_pop)
-                                            .size(13.0),
+                                            .color(theme.text_silver)
+                                            .size(FONT_BODY),
                                     );
                                     ui.vertical(|ui| {
                                         ui.label(
                                             egui::RichText::new(ag.name())
                                                 .color(theme.text_paper)
                                                 .strong()
-                                                .size(11.0),
+                                                .size(FONT_FOOTNOTE),
                                         );
                                         ui.label(
                                             egui::RichText::new(ag.title())
                                                 .color(theme.text_silver)
-                                                .size(9.5),
-                                        );
-                                    });
-                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                        ui.label(
-                                            egui::RichText::new(Lucide::CHEVRON_RIGHT)
-                                                .color(theme.text_silver)
-                                                .size(11.0),
+                                                .size(FONT_CAPTION),
                                         );
                                     });
                                 });
@@ -734,121 +584,85 @@ pub fn render_qoder_sidebar(
                             *show_agents_tab = false;
                             action = Some(SidebarAction::OpenDedicatedCoreAgent(ag));
                         }
-                        ui.add_space(3.0);
                     }
 
-                    ui.add_space(6.0);
-                    ui.horizontal(|ui| {
+                    if !agents.is_empty() {
+                        ui.add_space(SPACE_2);
+                        // Sentence case section label (Zero TASTE-WAVE2-EYEBROW all-caps slop)
                         ui.label(
-                            egui::RichText::new(format!("SUBAGENTS ({})", agents.len()))
+                            egui::RichText::new(format!("Subagents tùy chỉnh ({})", agents.len()))
                                 .color(theme.text_silver)
                                 .strong()
-                                .size(10.0),
+                                .size(FONT_CAPTION),
                         );
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if icon_btn(
-                                ui,
-                                Lucide::PLUS,
-                                theme.text_paper,
-                                theme.chip_bg,
-                                "Tạo Subagent mới",
-                            )
-                            .clicked()
-                            {
-                                action = Some(SidebarAction::OpenSkillStudioNewAgent);
-                            }
-                        });
-                    });
-                    ui.add_space(3.0);
 
-                    for (idx, ag) in agents.iter().enumerate() {
-                        if !q.is_empty()
-                            && !ag.name.to_lowercase().contains(&q)
-                            && !ag.role.to_lowercase().contains(&q)
-                        {
-                            continue;
-                        }
-                        let card_resp = Frame::none()
-                            .fill(theme.panel_bg)
-                            .rounding(Rounding::same(6.0))
-                            .stroke(Stroke::new(1.0, theme.border))
-                            .inner_margin(Margin::symmetric(8.0, 5.0))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(format!("@{}", ag.name))
-                                            .color(theme.text_paper)
-                                            .strong()
-                                            .size(10.8),
-                                    );
-                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                        if icon_btn(
-                                            ui,
-                                            Lucide::EDIT,
-                                            theme.text_silver,
-                                            Color32::TRANSPARENT,
-                                            "Sửa Subagent này",
-                                        )
-                                        .clicked()
-                                        {
-                                            action = Some(SidebarAction::InspectAgent(idx));
-                                        }
+                        for (idx, ag) in agents.iter().enumerate() {
+                            if !q.is_empty()
+                                && !ag.name.to_lowercase().contains(&q)
+                                && !ag.role.to_lowercase().contains(&q)
+                            {
+                                continue;
+                            }
+                            let card_resp = Frame::none()
+                                .fill(Color32::TRANSPARENT)
+                                .rounding(Rounding::same(ROUND_CTL))
+                                .inner_margin(Margin::symmetric(SPACE_2, SPACE_1))
+                                .show(ui, |ui| {
+                                    ui.set_width((ui.available_width() - 16.0).max(80.0));
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(format!("@{}", ag.name))
+                                                .color(theme.text_paper)
+                                                .strong()
+                                                .size(FONT_FOOTNOTE),
+                                        );
+                                        ui.with_layout(
+                                            Layout::right_to_left(Align::Center),
+                                            |ui| {
+                                                if icon_btn(
+                                                    ui,
+                                                    Lucide::EDIT,
+                                                    theme.text_silver,
+                                                    Color32::TRANSPARENT,
+                                                    "Chỉnh sửa Subagent này",
+                                                )
+                                                .clicked()
+                                                {
+                                                    action = Some(SidebarAction::InspectAgent(idx));
+                                                }
+                                            },
+                                        );
                                     });
+                                    ui.label(
+                                        egui::RichText::new(&ag.role)
+                                            .color(theme.text_silver)
+                                            .size(FONT_CAPTION),
+                                    );
                                 });
-                                ui.label(
-                                    egui::RichText::new(&ag.role)
-                                        .color(theme.text_silver)
-                                        .size(9.5),
-                                );
-                            });
-                        if card_resp.response.interact(egui::Sense::click()).clicked() {
-                            *show_agents_tab = false;
-                            action = Some(SidebarAction::OpenDedicatedCustomAgent(idx));
+                            if card_resp.response.interact(egui::Sense::click()).clicked() {
+                                *show_agents_tab = false;
+                                action = Some(SidebarAction::OpenDedicatedCustomAgent(idx));
+                            }
                         }
-                        ui.add_space(3.0);
                     }
 
-                    ui.add_space(8.0);
-                    let studio_resp = Frame::none()
-                        .fill(theme.surface_1)
-                        .rounding(Rounding::same(6.0))
-                        .stroke(Stroke::new(1.0, theme.border))
-                        .inner_margin(Margin::symmetric(9.0, 7.0))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new(Lucide::WAND)
-                                        .color(theme.accent_pop)
-                                        .size(13.0),
-                                );
-                                ui.vertical(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "Skill Studio ({} skills)",
-                                            skills.len()
-                                        ))
-                                        .color(theme.text_paper)
-                                        .strong()
-                                        .size(10.8),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new("Quản lý, chỉnh sửa & nạp GitHub")
-                                            .color(theme.text_silver)
-                                            .size(9.2),
-                                    );
-                                });
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    ui.label(
-                                        egui::RichText::new(Lucide::CHEVRON_RIGHT)
-                                            .color(theme.text_silver)
-                                            .size(11.0),
-                                    );
-                                });
-                            });
-                        });
-                    if studio_resp
-                        .response
-                        .interact(egui::Sense::click())
+                    ui.add_space(SPACE_2);
+                    if ui
+                        .add_sized(
+                            vec2(ui.available_width(), CTL_DEFAULT),
+                            egui::Button::new(
+                                egui::RichText::new(format!(
+                                    "{} Quản lý {} Skills & Subagents...",
+                                    Lucide::WAND,
+                                    skills.len()
+                                ))
+                                .color(theme.text_silver)
+                                .size(FONT_CAPTION),
+                            )
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::new(1.0, theme.border))
+                            .rounding(Rounding::same(ROUND_CTL)),
+                        )
                         .clicked()
                     {
                         action = Some(SidebarAction::SwitchCenterView(
@@ -858,47 +672,34 @@ pub fn render_qoder_sidebar(
                 }
             });
 
-        // 4. Bottom Status Capsule (Compact Active Session Footer)
+        // 4. Minimalist Single-Line Status Footer (No bulky framed card)
         ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
-            ui.add_space(2.0);
+            ui.add_space(SPACE_1);
             let active_th = active_chat_mgr.active_thread();
+            ui.horizontal(|ui| {
+                let dot_col = if is_streaming {
+                    theme.accent_pop
+                } else {
+                    theme.success
+                };
+                let (dot_rect, _) =
+                    ui.allocate_exact_size(vec2(SPACE_2, SPACE_2), egui::Sense::hover());
+                ui.painter().circle_filled(dot_rect.center(), 3.0, dot_col);
 
-            Frame::none()
-                .fill(theme.surface_1)
-                .rounding(Rounding::same(6.0))
-                .stroke(Stroke::new(1.0, theme.border))
-                .inner_margin(Margin::symmetric(8.0, 5.0))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        let dot_col = if is_streaming {
-                            theme.accent_pop
-                        } else {
-                            theme.success
-                        };
-                        let (dot_rect, _) =
-                            ui.allocate_exact_size(vec2(8.0, 8.0), egui::Sense::hover());
-                        ui.painter().circle_filled(dot_rect.center(), 2.8, dot_col);
-
-                        ui.vertical(|ui| {
-                            let short_th: String = active_th.title.chars().take(22).collect();
-                            ui.label(
-                                egui::RichText::new(short_th)
-                                    .color(theme.text_paper)
-                                    .strong()
-                                    .size(10.8),
-                            );
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{} · {} changes",
-                                    active_th.agent_mode.short_tag(),
-                                    file_changes.len()
-                                ))
-                                .color(theme.text_silver)
-                                .size(9.5),
-                            );
-                        });
-                    });
+                ui.label(
+                    egui::RichText::new(active_th.agent_mode.short_tag())
+                        .color(theme.text_paper)
+                        .strong()
+                        .size(FONT_CAPTION),
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.label(
+                        egui::RichText::new(format!("{} thay đổi", file_changes.len()))
+                            .color(theme.text_silver)
+                            .size(FONT_CAPTION),
+                    );
                 });
+            });
         });
     });
 

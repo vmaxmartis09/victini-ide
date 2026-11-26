@@ -179,31 +179,41 @@ impl VictiniApp {
         visuals.widgets.noninteractive.bg_fill = theme.panel_bg;
         visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, theme.border);
         visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
+        visuals.widgets.noninteractive.rounding = egui::Rounding::same(8.0);
 
         visuals.widgets.inactive.bg_fill = theme.input_bg;
         visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, theme.border);
         visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
-        visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
+        visuals.widgets.inactive.rounding = egui::Rounding::same(8.0);
 
         visuals.widgets.hovered.bg_fill = theme.panel_hover;
         visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, theme.border_strong);
         visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
-        visuals.widgets.hovered.rounding = egui::Rounding::same(6.0);
+        visuals.widgets.hovered.rounding = egui::Rounding::same(8.0);
 
         visuals.widgets.active.bg_fill = theme.surface_2;
         visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, theme.accent_pop);
         visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, theme.text_paper);
-        visuals.widgets.active.rounding = egui::Rounding::same(6.0);
+        visuals.widgets.active.rounding = egui::Rounding::same(8.0);
 
         visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(
             theme.accent_pop.r(),
             theme.accent_pop.g(),
             theme.accent_pop.b(),
-            95,
+            80,
         );
         visuals.selection.stroke = egui::Stroke::new(1.0, theme.accent_pop);
 
-        ctx.set_visuals(visuals);
+        // Enforce Elegans Strict 4px Spacing Grid, h-7 (28px) Control Height, and 4px Quiet Scrollbar
+        ctx.style_mut(|style| {
+            style.visuals = visuals;
+            style.spacing.item_spacing = egui::vec2(8.0, 8.0);
+            style.spacing.button_padding = egui::vec2(8.0, 4.0);
+            style.spacing.window_margin = egui::Margin::same(12.0);
+            style.spacing.indent = 16.0;
+            style.spacing.interact_size = egui::vec2(28.0, 28.0);
+            style.spacing.scroll.bar_width = 4.0;
+        });
     }
 
     fn refresh_workspace(&mut self) {
@@ -762,7 +772,7 @@ impl eframe::App for VictiniApp {
             .frame(
                 egui::Frame::none()
                     .fill(self.theme.bg_ink)
-                    .inner_margin(egui::Margin::symmetric(12.0, 7.0)),
+                    .inner_margin(egui::Margin::symmetric(12.0, 8.0)),
             )
             .show(ctx, |ui| {
                 header_action = ui::render_transparent_header(
@@ -833,7 +843,7 @@ impl eframe::App for VictiniApp {
         // 6. LEFT SIDEBAR (Threads & 1-on-1 Dedicated Agents Launcher)
         if self.layout.show_left_sidebar {
             let target_w = if self.layout.left_mini_mode {
-                54.0
+                48.0
             } else {
                 self.layout.left_panel_width
             };
@@ -844,9 +854,9 @@ impl eframe::App for VictiniApp {
                 egui::Frame::none()
                     .fill(self.theme.bg_ink)
                     .inner_margin(egui::Margin::same(if self.layout.left_mini_mode {
-                        6.0
+                        8.0
                     } else {
-                        10.0
+                        12.0
                     })),
             );
 
@@ -1044,17 +1054,22 @@ impl eframe::App for VictiniApp {
             }
         }
 
-        // 7. RIGHT RAIL: T3 CODE BEEBOX GIT INSPECTOR & REMOTE EMULATOR DOCK
+        // 7. RIGHT RAIL: ELEGANS FRAMED-SHEET INSPECTOR DOCK (8px inset from right/bottom)
         if self.layout.show_right_dock {
             let mut beebox_action = None;
             egui::SidePanel::right("victini_beebox_dock")
                 .resizable(true)
                 .default_width(self.layout.right_panel_width)
-                .width_range(240.0..=400.0)
+                .width_range(256.0..=400.0)
                 .frame(
                     egui::Frame::none()
-                        .fill(self.theme.bg_field)
-                        .inner_margin(egui::Margin::same(10.0)),
+                        .fill(self.theme.bg_ink)
+                        .inner_margin(egui::Margin {
+                            left: 0.0,
+                            right: 8.0,
+                            top: 0.0,
+                            bottom: 8.0,
+                        }),
                 )
                 .show(ctx, |ui| {
                     beebox_action = ui::render_beebox_panel(
@@ -1257,121 +1272,133 @@ impl eframe::App for VictiniApp {
             }
         }
 
-        // 8. CENTER WORKSPACE AREA
+        // 8. CENTER WORKSPACE AREA: ELEGANS FRAMED-SHEET (8px inset, 16px ROUND_PANEL, 1px border)
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::none()
-                    .fill(self.theme.bg_field)
-                    .inner_margin(egui::Margin::same(12.0)),
+                    .fill(self.theme.bg_ink)
+                    .inner_margin(egui::Margin {
+                        left: 4.0,
+                        right: 8.0,
+                        top: 0.0,
+                        bottom: 8.0,
+                    }),
             )
             .show(ctx, |ui| {
                 let mut chat_action = None;
                 let mut kanban_action = None;
                 let mut modal_action = None;
 
-                match self.layout.center_mode {
-                    CenterViewMode::ChatTimeline => {
-                        chat_action = ui::render_qoder_chat_timeline(
-                            ui,
-                            &self.theme,
-                            elapsed_secs,
-                            &proj_name,
-                            &self.branch_name,
-                            self.active_agent,
-                            self.avatar_state,
-                            self.exec_mode,
-                            &self.chat_mgr,
-                            &self.file_changes,
-                            &self.workspace_files,
-                            &self.discovered_skills,
-                            &self.discovered_agents,
-                            &mut self.input_prompt,
-                            &mut self.chat_composer_ui,
-                        );
-                    }
-                    CenterViewMode::KanbanBoard => {
-                        kanban_action = ui::render_agent_kanban_view(
-                            ui,
-                            &self.theme,
-                            elapsed_secs,
-                            &mut self.kanban,
-                            &mut self.kanban_composer,
-                            &self.discovered_skills,
-                            &self.discovered_agents,
-                            &self.branches,
-                            &self.branch_name,
-                        );
-                    }
-                    CenterViewMode::SplitChatKanban => {
-                        ui.columns(2, |cols| {
-                            chat_action = ui::render_qoder_chat_timeline(
-                                &mut cols[0],
-                                &self.theme,
-                                elapsed_secs,
-                                &proj_name,
-                                &self.branch_name,
-                                self.active_agent,
-                                self.avatar_state,
-                                self.exec_mode,
-                                &self.chat_mgr,
-                                &self.file_changes,
-                                &self.workspace_files,
-                                &self.discovered_skills,
-                                &self.discovered_agents,
-                                &mut self.input_prompt,
-                                &mut self.chat_composer_ui,
-                            );
-                            kanban_action = ui::render_agent_kanban_view(
-                                &mut cols[1],
-                                &self.theme,
-                                elapsed_secs,
-                                &mut self.kanban,
-                                &mut self.kanban_composer,
-                                &self.discovered_skills,
-                                &self.discovered_agents,
-                                &self.branches,
-                                &self.branch_name,
-                            );
-                        });
-                    }
-                    CenterViewMode::GitDiffModal => {
-                        modal_action = ui::render_git_diff_viewer(
-                            ui,
-                            &self.theme,
-                            &self.active_diff,
-                            &self.file_changes,
-                            &self.workspace_files,
-                            &mut self.studio_editor,
-                        );
-                    }
-                    CenterViewMode::ProjectsModal => {
-                        modal_action = ui::render_projects_manager(
-                            ui,
-                            &self.theme,
-                            &self.project_mgr,
-                            &mut self.studio_editor,
-                        );
-                    }
-                    CenterViewMode::AgentSkillStudio => {
-                        modal_action = ui::render_agent_skill_studio(
-                            ui,
-                            &self.theme,
-                            elapsed_secs,
-                            &self.discovered_skills,
-                            &self.discovered_agents,
-                            &mut self.studio_editor,
-                        );
-                    }
-                    CenterViewMode::SettingsModal => {
-                        modal_action = ui::render_settings_modal(
-                            ui,
-                            &self.theme,
-                            &mut self.layout,
-                            &mut self.reaper,
-                            &self.ticker,
-                        );
-                    }
-                }
+                egui::Frame::none()
+                    .fill(self.theme.bg_field)
+                    .rounding(egui::Rounding::same(16.0))
+                    .stroke(egui::Stroke::new(1.0, self.theme.border))
+                    .inner_margin(egui::Margin::same(16.0))
+                    .show(ui, |ui| {
+                        match self.layout.center_mode {
+                            CenterViewMode::ChatTimeline => {
+                                chat_action = ui::render_qoder_chat_timeline(
+                                    ui,
+                                    &self.theme,
+                                    elapsed_secs,
+                                    &proj_name,
+                                    &self.branch_name,
+                                    self.active_agent,
+                                    self.avatar_state,
+                                    self.exec_mode,
+                                    &self.chat_mgr,
+                                    &self.file_changes,
+                                    &self.workspace_files,
+                                    &self.discovered_skills,
+                                    &self.discovered_agents,
+                                    &mut self.input_prompt,
+                                    &mut self.chat_composer_ui,
+                                );
+                            }
+                            CenterViewMode::KanbanBoard => {
+                                kanban_action = ui::render_agent_kanban_view(
+                                    ui,
+                                    &self.theme,
+                                    elapsed_secs,
+                                    &mut self.kanban,
+                                    &mut self.kanban_composer,
+                                    &self.discovered_skills,
+                                    &self.discovered_agents,
+                                    &self.branches,
+                                    &self.branch_name,
+                                );
+                            }
+                            CenterViewMode::SplitChatKanban => {
+                                ui.columns(2, |cols| {
+                                    chat_action = ui::render_qoder_chat_timeline(
+                                        &mut cols[0],
+                                        &self.theme,
+                                        elapsed_secs,
+                                        &proj_name,
+                                        &self.branch_name,
+                                        self.active_agent,
+                                        self.avatar_state,
+                                        self.exec_mode,
+                                        &self.chat_mgr,
+                                        &self.file_changes,
+                                        &self.workspace_files,
+                                        &self.discovered_skills,
+                                        &self.discovered_agents,
+                                        &mut self.input_prompt,
+                                        &mut self.chat_composer_ui,
+                                    );
+                                    kanban_action = ui::render_agent_kanban_view(
+                                        &mut cols[1],
+                                        &self.theme,
+                                        elapsed_secs,
+                                        &mut self.kanban,
+                                        &mut self.kanban_composer,
+                                        &self.discovered_skills,
+                                        &self.discovered_agents,
+                                        &self.branches,
+                                        &self.branch_name,
+                                    );
+                                });
+                            }
+                            CenterViewMode::GitDiffModal => {
+                                modal_action = ui::render_git_diff_viewer(
+                                    ui,
+                                    &self.theme,
+                                    &self.active_diff,
+                                    &self.file_changes,
+                                    &self.workspace_files,
+                                    &mut self.studio_editor,
+                                );
+                            }
+                            CenterViewMode::ProjectsModal => {
+                                modal_action = ui::render_projects_manager(
+                                    ui,
+                                    &self.theme,
+                                    &self.project_mgr,
+                                    &mut self.studio_editor,
+                                );
+                            }
+                            CenterViewMode::AgentSkillStudio => {
+                                modal_action = ui::render_agent_skill_studio(
+                                    ui,
+                                    &self.theme,
+                                    elapsed_secs,
+                                    &self.discovered_skills,
+                                    &self.discovered_agents,
+                                    &mut self.studio_editor,
+                                );
+                            }
+                            CenterViewMode::SettingsModal => {
+                                modal_action = ui::render_settings_modal(
+                                    ui,
+                                    &self.theme,
+                                    &mut self.layout,
+                                    &mut self.reaper,
+                                    &self.ticker,
+                                );
+                            }
+                        }
+                    });
 
                 // Handle Chat UI Actions
                 if let Some(c_act) = chat_action {

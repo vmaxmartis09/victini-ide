@@ -4,7 +4,10 @@ use crate::ai::{
 };
 use crate::config::{DiscoveredAgent, DiscoveredSkill};
 use crate::git::GitFileChange;
-use crate::theme::{CanhTheme, Lucide};
+use crate::theme::{
+    CanhTheme, Lucide, CTL_DEFAULT, CTL_SM, FONT_BODY, FONT_CALLOUT, FONT_CAPTION, FONT_FOOTNOTE,
+    FONT_HEADLINE, ROUND_CARD, ROUND_CTL, ROUND_XS, SPACE_1, SPACE_2, SPACE_3, SPACE_4, SPACE_6,
+};
 use crate::ui::header::icon_btn;
 use egui::text::LayoutJob;
 use egui::{
@@ -69,7 +72,6 @@ pub fn render_qoder_chat_timeline(
         || avatar_state == AgentAvatarState::Answering;
     let thread = chat_mgr.active_thread();
 
-    // Auto-trigger popovers when typing @, $, or / at the end of prompt
     if input_prompt.ends_with('@') {
         composer_state.show_context_popup = true;
         composer_state.context_tab = 0;
@@ -81,36 +83,31 @@ pub fn render_qoder_chat_timeline(
         composer_state.context_tab = 2;
     }
 
+    ui.spacing_mut().item_spacing = vec2(SPACE_2, SPACE_2);
+
+    // Centered Reading Column (Max 780px on 4px grid with generous whitespace)
     let total_w = ui.available_width();
-    let reading_w = total_w.min(820.0);
-    let side_pad = ((total_w - reading_w) * 0.5).max(0.0);
+    let reading_w = total_w.min(780.0);
+    let side_pad = (((total_w - reading_w) * 0.5) / SPACE_1).floor() * SPACE_1;
 
     ui.vertical(|ui| {
-        // 1. Top Session Bar (Centered within reading column)
+        // 1. Quiet Flat Session Header (28px height, centered in reading column)
         ui.horizontal(|ui| {
-            ui.add_space(side_pad);
+            ui.add_space(side_pad.max(0.0));
             ui.allocate_ui_with_layout(
-                vec2(reading_w, 28.0),
+                vec2(reading_w, CTL_DEFAULT),
                 Layout::left_to_right(Align::Center),
                 |ui| {
-                    ui.label(
-                        egui::RichText::new(Lucide::MESSAGE_SQUARE)
-                            .color(theme.accent_pop)
-                            .size(13.0),
-                    );
                     ui.label(
                         egui::RichText::new(&thread.title)
                             .color(theme.text_paper)
                             .strong()
-                            .size(13.0),
+                            .size(FONT_CALLOUT),
                     );
                     ui.label(
-                        egui::RichText::new(format!(
-                            "· {} / {}",
-                            project_name, branch_name
-                        ))
-                        .color(theme.text_silver)
-                        .size(11.0),
+                        egui::RichText::new(format!("· {} / {}", project_name, branch_name))
+                            .color(theme.text_silver)
+                            .size(FONT_FOOTNOTE),
                     );
 
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -127,23 +124,22 @@ pub fn render_qoder_chat_timeline(
                             action = Some(ChatUiAction::StopStream);
                         }
 
-                        // Active Agent Mode Pill
+                        let mode_btn = egui::Button::new(
+                            egui::RichText::new(format!(
+                                "{} {} {}",
+                                Lucide::BOT,
+                                thread.agent_mode.badge_label(active_agent),
+                                Lucide::CHEVRON_DOWN
+                            ))
+                            .color(theme.text_paper)
+                            .size(FONT_CAPTION),
+                        )
+                        .fill(theme.surface_1)
+                        .stroke(Stroke::new(1.0, theme.border))
+                        .rounding(Rounding::same(ROUND_CTL));
+
                         if ui
-                            .add(
-                                egui::Button::new(
-                                    egui::RichText::new(format!(
-                                        "{} {} {}",
-                                        Lucide::BOT,
-                                        thread.agent_mode.badge_label(active_agent),
-                                        Lucide::CHEVRON_DOWN
-                                    ))
-                                    .color(theme.text_paper)
-                                    .size(11.0),
-                                )
-                                .fill(theme.surface_1)
-                                .stroke(Stroke::new(1.0, theme.border))
-                                .rounding(Rounding::same(6.0)),
-                            )
+                            .add_sized(vec2(0.0, CTL_DEFAULT), mode_btn)
                             .on_hover_text(format!(
                                 "{}\nClick để đổi Agent hoặc mở Chat 1-1",
                                 thread.agent_mode.role_description()
@@ -157,51 +153,52 @@ pub fn render_qoder_chat_timeline(
             );
         });
 
-        ui.add_space(6.0);
+        ui.add_space(SPACE_2);
 
-        // 2. Main Chat Timeline Scroll Area
+        // 2. Flat-at-Rest Chat Timeline Scroll Area
         let reserved_bottom =
             if composer_state.show_context_popup || composer_state.show_agent_popup {
-                275.0
+                288.0
             } else {
-                126.0
+                136.0
             };
-        let scroll_h = (ui.available_height() - reserved_bottom).max(100.0);
+        let scroll_h = (ui.available_height() - reserved_bottom).max(120.0);
 
         ScrollArea::vertical()
-            .id_salt("agy_center_chat_scroll")
+            .id_salt("elegans_center_chat_scroll")
             .auto_shrink([false, false])
             .max_height(scroll_h)
             .stick_to_bottom(true)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.add_space(side_pad);
+                    ui.add_space(side_pad.max(0.0));
                     ui.allocate_ui_with_layout(
                         vec2(reading_w, ui.available_height()),
                         Layout::top_down(Align::Min),
                         |ui| {
                             ui.set_width(reading_w);
+                            ui.add_space(SPACE_2);
 
                             for msg in &thread.messages {
                                 match msg.role {
                                     MessageRole::User => {
-                                        // User Prompt Bubble (Right-aligned warm surface card)
+                                        // User Prompt Capsule: Flat surface_2 fill, 12px ROUND_CARD, 16x12 padding
                                         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                                            let max_bubble_w = (reading_w * 0.78).max(260.0);
+                                            let max_bubble_w = (reading_w * 0.76).max(240.0);
                                             Frame::none()
                                                 .fill(theme.surface_2)
-                                                .rounding(Rounding::same(12.0))
-                                                .stroke(Stroke::new(1.0, theme.border_strong))
-                                                .inner_margin(Margin::symmetric(14.0, 10.0))
+                                                .rounding(Rounding::same(ROUND_CARD))
+                                                .stroke(Stroke::new(1.0, theme.border))
+                                                .inner_margin(Margin::symmetric(SPACE_4, SPACE_3))
                                                 .show(ui, |ui| {
                                                     ui.set_max_width(max_bubble_w);
                                                     ui.vertical(|ui| {
                                                         if let Some(ref q) = msg.quoted {
                                                             Frame::none()
                                                                 .fill(theme.surface_1)
-                                                                .rounding(Rounding::same(6.0))
+                                                                .rounding(Rounding::same(ROUND_CTL))
                                                                 .inner_margin(Margin::symmetric(
-                                                                    8.0, 4.0,
+                                                                    SPACE_2, SPACE_1,
                                                                 ))
                                                                 .show(ui, |ui| {
                                                                     ui.label(
@@ -212,9 +209,9 @@ pub fn render_qoder_chat_timeline(
                                                                                 q.author_label
                                                                             ),
                                                                         )
-                                                                        .color(theme.accent_pop)
+                                                                        .color(theme.text_paper)
                                                                         .strong()
-                                                                        .size(10.5),
+                                                                        .size(FONT_CAPTION),
                                                                     );
                                                                     let short_q: String = q
                                                                         .snippet
@@ -227,312 +224,287 @@ pub fn render_qoder_chat_timeline(
                                                                         )
                                                                         .color(theme.text_silver)
                                                                         .monospace()
-                                                                        .size(10.5),
+                                                                        .size(FONT_CAPTION),
                                                                     );
                                                                 });
-                                                            ui.add_space(4.0);
+                                                            ui.add_space(SPACE_1);
                                                         }
                                                         render_inline_markdown_line(
                                                             ui,
                                                             theme,
                                                             &msg.content,
-                                                            13.0,
+                                                            FONT_BODY,
                                                             theme.text_paper,
                                                         );
                                                     });
                                                 });
                                         });
-                                        ui.add_space(16.0);
+                                        ui.add_space(SPACE_4);
                                     }
                                     MessageRole::Assistant => {
-                                        // By default, steps are collapsed unless streaming or explicitly expanded
+                                        // Elegans Flat-at-Rest Assistant Response: NO bulky outer box!
+                                        // Flows directly on the Framed-Sheet with clean 4px grid spacing.
                                         let is_expanded = msg.is_streaming
                                             || composer_state
                                                 .expanded_step_msgs
                                                 .contains(&msg.id);
 
-                                        Frame::none()
-                                            .fill(theme.panel_bg)
-                                            .rounding(Rounding::same(10.0))
-                                            .stroke(Stroke::new(1.0, theme.border))
-                                            .inner_margin(Margin::symmetric(16.0, 12.0))
-                                            .show(ui, |ui| {
-                                                ui.set_width((reading_w - 34.0).max(200.0));
-                                                ui.vertical(|ui| {
-                                                    // Single Clean Agy Header Line: [Agent Icon & Name] + [Collapsible Thought/Step Pill] + [Time]
-                                                    ui.horizontal(|ui| {
-                                                        let agent_header_name =
-                                                            match &thread.agent_mode {
-                                                                ThreadAgentMode::DedicatedCustom {
-                                                                    name,
-                                                                    ..
-                                                                } => format!("@{}", name),
-                                                                _ => msg.agent.name().to_string(),
-                                                            };
-                                                        ui.label(
-                                                            egui::RichText::new(format!(
-                                                                "{} {}",
-                                                                msg.agent.icon(),
-                                                                agent_header_name
-                                                            ))
-                                                            .color(theme.text_paper)
-                                                            .strong()
-                                                            .size(12.2),
-                                                        );
-                                                        ui.label(
-                                                            egui::RichText::new(msg.agent.title())
-                                                                .color(theme.text_silver)
-                                                                .size(11.0),
-                                                        );
+                                        ui.vertical(|ui| {
+                                            ui.set_width(reading_w);
 
-                                                        if !msg.steps.is_empty() {
-                                                            ui.add_space(4.0);
-                                                            let chev = if is_expanded {
-                                                                Lucide::CHEVRON_DOWN
-                                                            } else {
-                                                                Lucide::CHEVRON_RIGHT
-                                                            };
-                                                            let step_pill_txt = if msg.is_streaming
-                                                            {
-                                                                format!(
-                                                                    "{} Đang xử lý ({:.1}s · {} bước)",
-                                                                    chev,
-                                                                    msg.duration_secs,
-                                                                    msg.steps.len()
-                                                                )
-                                                            } else {
-                                                                format!(
-                                                                    "{} Đã xử lý {:.1}s · {} bước",
-                                                                    chev,
-                                                                    msg.duration_secs.max(0.2),
-                                                                    msg.steps.len()
-                                                                )
-                                                            };
+                                            // Header Line: [Agent Icon & Name] + [Step Pill] + [Time]
+                                            ui.horizontal(|ui| {
+                                                let agent_header_name = match &thread.agent_mode {
+                                                    ThreadAgentMode::DedicatedCustom {
+                                                        name,
+                                                        ..
+                                                    } => format!("@{}", name),
+                                                    _ => msg.agent.name().to_string(),
+                                                };
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "{} {}",
+                                                        msg.agent.icon(),
+                                                        agent_header_name
+                                                    ))
+                                                    .color(theme.text_paper)
+                                                    .strong()
+                                                    .size(FONT_FOOTNOTE),
+                                                );
+                                                ui.label(
+                                                    egui::RichText::new(msg.agent.title())
+                                                        .color(theme.text_silver)
+                                                        .size(FONT_CAPTION),
+                                                );
 
-                                                            if ui
-                                                                .add(
-                                                                    egui::Button::new(
-                                                                        egui::RichText::new(
-                                                                            step_pill_txt,
-                                                                        )
-                                                                        .color(
-                                                                            if msg.is_streaming {
-                                                                                theme.accent_pop
-                                                                            } else {
-                                                                                theme.text_silver
-                                                                            },
-                                                                        )
-                                                                        .size(10.5),
-                                                                    )
-                                                                    .fill(theme.surface_1)
-                                                                    .rounding(Rounding::same(5.0)),
-                                                                )
-                                                                .on_hover_text(
-                                                                    "Click để xem chi tiết các bước thực thi",
-                                                                )
-                                                                .clicked()
-                                                            {
-                                                                if let Some(pos) = composer_state
-                                                                    .expanded_step_msgs
-                                                                    .iter()
-                                                                    .position(|id| id == &msg.id)
-                                                                {
-                                                                    composer_state
-                                                                        .expanded_step_msgs
-                                                                        .remove(pos);
-                                                                } else {
-                                                                    composer_state
-                                                                        .expanded_step_msgs
-                                                                        .push(msg.id.clone());
-                                                                }
-                                                            }
+                                                if !msg.steps.is_empty() {
+                                                    ui.add_space(SPACE_1);
+                                                    let chev = if is_expanded {
+                                                        Lucide::CHEVRON_DOWN
+                                                    } else {
+                                                        Lucide::CHEVRON_RIGHT
+                                                    };
+                                                    let step_pill_txt = if msg.is_streaming {
+                                                        format!(
+                                                            "{} Đang xử lý · {:.1}s ({} bước)",
+                                                            chev,
+                                                            msg.duration_secs,
+                                                            msg.steps.len()
+                                                        )
+                                                    } else {
+                                                        format!(
+                                                            "{} Đã xử lý {:.1}s · {} bước",
+                                                            chev,
+                                                            msg.duration_secs.max(0.2),
+                                                            msg.steps.len()
+                                                        )
+                                                    };
+
+                                                    let pill_btn = egui::Button::new(
+                                                        egui::RichText::new(step_pill_txt)
+                                                            .color(if msg.is_streaming {
+                                                                theme.accent_pop
+                                                            } else {
+                                                                theme.text_silver
+                                                            })
+                                                            .size(FONT_CAPTION),
+                                                    )
+                                                    .fill(theme.surface_1)
+                                                    .rounding(Rounding::same(ROUND_XS));
+
+                                                    if ui
+                                                        .add_sized(vec2(0.0, CTL_SM), pill_btn)
+                                                        .on_hover_text(
+                                                            "Click để đóng/mở chi tiết các bước thực thi",
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        if let Some(pos) = composer_state
+                                                            .expanded_step_msgs
+                                                            .iter()
+                                                            .position(|id| id == &msg.id)
+                                                        {
+                                                            composer_state
+                                                                .expanded_step_msgs
+                                                                .remove(pos);
+                                                        } else {
+                                                            composer_state
+                                                                .expanded_step_msgs
+                                                                .push(msg.id.clone());
                                                         }
+                                                    }
+                                                }
 
-                                                        ui.with_layout(
-                                                            Layout::right_to_left(Align::Center),
-                                                            |ui| {
+                                                ui.with_layout(
+                                                    Layout::right_to_left(Align::Center),
+                                                    |ui| {
+                                                        ui.label(
+                                                            egui::RichText::new(&msg.timestamp)
+                                                                .color(theme.text_silver)
+                                                                .size(FONT_CAPTION),
+                                                        );
+                                                    },
+                                                );
+                                            });
+
+                                            // Collapsible Steps Drawer (8px ROUND_CTL, 12x8 padding)
+                                            if is_expanded && !msg.steps.is_empty() {
+                                                ui.add_space(SPACE_2);
+                                                Frame::none()
+                                                    .fill(theme.surface_1)
+                                                    .rounding(Rounding::same(ROUND_CTL))
+                                                    .stroke(Stroke::new(1.0, theme.border))
+                                                    .inner_margin(Margin::symmetric(
+                                                        SPACE_3, SPACE_2,
+                                                    ))
+                                                    .show(ui, |ui| {
+                                                        for st in &msg.steps {
+                                                            ui.horizontal_wrapped(|ui| {
                                                                 ui.label(
                                                                     egui::RichText::new(
-                                                                        &msg.timestamp,
+                                                                        Lucide::CHECK,
                                                                     )
-                                                                    .color(theme.text_silver)
-                                                                    .size(10.5),
+                                                                    .color(theme.success)
+                                                                    .size(FONT_CAPTION),
                                                                 );
-                                                            },
-                                                        );
-                                                    });
-
-                                                    // Expandable Agy Execution Steps Box
-                                                    if is_expanded && !msg.steps.is_empty() {
-                                                        ui.add_space(6.0);
-                                                        Frame::none()
-                                                            .fill(theme.surface_1)
-                                                            .rounding(Rounding::same(6.0))
-                                                            .stroke(Stroke::new(
-                                                                1.0,
-                                                                theme.border,
-                                                            ))
-                                                            .inner_margin(Margin::symmetric(
-                                                                10.0, 6.0,
-                                                            ))
-                                                            .show(ui, |ui| {
-                                                                for st in &msg.steps {
-                                                                    ui.horizontal_wrapped(|ui| {
-                                                                        ui.label(
-                                                                            egui::RichText::new(
-                                                                                Lucide::CHECK,
-                                                                            )
-                                                                            .color(theme.success)
-                                                                            .size(10.5),
-                                                                        );
-                                                                        ui.label(
-                                                                            egui::RichText::new(
-                                                                                &st.label,
-                                                                            )
-                                                                            .color(
-                                                                                theme.text_paper,
-                                                                            )
-                                                                            .strong()
-                                                                            .size(10.8),
-                                                                        );
-                                                                        ui.label(
-                                                                            egui::RichText::new(
-                                                                                &st.detail,
-                                                                            )
-                                                                            .color(
-                                                                                theme.text_silver,
-                                                                            )
-                                                                            .size(10.5),
-                                                                        );
-                                                                    });
-                                                                }
+                                                                ui.label(
+                                                                    egui::RichText::new(&st.label)
+                                                                        .color(theme.text_paper)
+                                                                        .strong()
+                                                                        .size(FONT_CAPTION),
+                                                                );
+                                                                ui.label(
+                                                                    egui::RichText::new(&st.detail)
+                                                                        .color(theme.text_silver)
+                                                                        .size(FONT_CAPTION),
+                                                                );
                                                             });
-                                                    }
-
-                                                    ui.add_space(8.0);
-
-                                                    // Rich Markdown Message Content (Parses **bold**, `code`, lists, headers, code blocks)
-                                                    render_formatted_message_content(
-                                                        ui,
-                                                        theme,
-                                                        &msg.content,
-                                                        &mut action,
-                                                    );
-
-                                                    if msg.is_streaming {
-                                                        ui.add_space(6.0);
-                                                        ui.horizontal(|ui| {
-                                                            let (r, _) = ui.allocate_exact_size(
-                                                                vec2(8.0, 8.0),
-                                                                egui::Sense::hover(),
-                                                            );
-                                                            ui.painter().circle_filled(
-                                                                r.center(),
-                                                                3.0,
-                                                                theme.accent_pop,
-                                                            );
-                                                            ui.label(
-                                                                egui::RichText::new(
-                                                                    "Đang trả lời...",
-                                                                )
-                                                                .color(theme.accent_pop)
-                                                                .size(11.0),
-                                                            );
-                                                        });
-                                                    }
-
-                                                    // Subtle Footer Action Bar
-                                                    ui.add_space(8.0);
-                                                    ui.horizontal(|ui| {
-                                                        if icon_btn(
-                                                            ui,
-                                                            Lucide::COPY,
-                                                            theme.text_silver,
-                                                            Color32::TRANSPARENT,
-                                                            "Sao chép nội dung tin nhắn",
-                                                        )
-                                                        .clicked()
-                                                        {
-                                                            ui.ctx().copy_text(msg.content.clone());
-                                                        }
-                                                        if icon_btn(
-                                                            ui,
-                                                            Lucide::QUOTE,
-                                                            theme.text_silver,
-                                                            Color32::TRANSPARENT,
-                                                            "Trích dẫn (Quote) vào câu hỏi tiếp theo",
-                                                        )
-                                                        .clicked()
-                                                        {
-                                                            action = Some(ChatUiAction::SetQuote(
-                                                                QuotedContext {
-                                                                    source_msg_id: msg.id.clone(),
-                                                                    author_label: msg
-                                                                        .agent
-                                                                        .name()
-                                                                        .to_string(),
-                                                                    snippet: msg.content.clone(),
-                                                                    is_quote_block: true,
-                                                                },
-                                                            ));
-                                                        }
-                                                        if icon_btn(
-                                                            ui,
-                                                            Lucide::REPLY,
-                                                            theme.text_silver,
-                                                            Color32::TRANSPARENT,
-                                                            "Trả lời (Reply) tin nhắn này",
-                                                        )
-                                                        .clicked()
-                                                        {
-                                                            action = Some(ChatUiAction::SetQuote(
-                                                                QuotedContext {
-                                                                    source_msg_id: msg.id.clone(),
-                                                                    author_label: msg
-                                                                        .agent
-                                                                        .name()
-                                                                        .to_string(),
-                                                                    snippet: msg.content.clone(),
-                                                                    is_quote_block: false,
-                                                                },
-                                                            ));
-                                                        }
-                                                        if icon_btn(
-                                                            ui,
-                                                            Lucide::KANBAN,
-                                                            theme.text_silver,
-                                                            Color32::TRANSPARENT,
-                                                            "Chuyển nội dung này thành thẻ tác vụ trên Kanban",
-                                                        )
-                                                        .clicked()
-                                                        {
-                                                            action = Some(
-                                                                ChatUiAction::SendMessageToKanban {
-                                                                    title: msg
-                                                                        .content
-                                                                        .lines()
-                                                                        .next()
-                                                                        .unwrap_or("Task")
-                                                                        .replace("**", "")
-                                                                        .chars()
-                                                                        .take(48)
-                                                                        .collect(),
-                                                                    detail: msg.content.clone(),
-                                                                    agent: msg.agent,
-                                                                },
-                                                            );
                                                         }
                                                     });
+                                            }
+
+                                            ui.add_space(SPACE_2);
+
+                                            // Main Assistant Content (13px FONT_BODY, parsed Markdown)
+                                            render_formatted_message_content(
+                                                ui,
+                                                theme,
+                                                &msg.content,
+                                                &mut action,
+                                            );
+
+                                            if msg.is_streaming {
+                                                ui.add_space(SPACE_2);
+                                                ui.horizontal(|ui| {
+                                                    let (r, _) = ui.allocate_exact_size(
+                                                        vec2(SPACE_2, SPACE_2),
+                                                        egui::Sense::hover(),
+                                                    );
+                                                    ui.painter().circle_filled(
+                                                        r.center(),
+                                                        3.0,
+                                                        theme.accent_pop,
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new("Đang trả lời...")
+                                                            .color(theme.accent_pop)
+                                                            .size(FONT_CAPTION),
+                                                    );
                                                 });
+                                            }
+
+                                            // Quiet Action Row (28px icon buttons)
+                                            ui.add_space(SPACE_1);
+                                            ui.horizontal(|ui| {
+                                                ui.spacing_mut().item_spacing =
+                                                    vec2(SPACE_1, 0.0);
+                                                if icon_btn(
+                                                    ui,
+                                                    Lucide::COPY,
+                                                    theme.text_silver,
+                                                    Color32::TRANSPARENT,
+                                                    "Sao chép nội dung tin nhắn",
+                                                )
+                                                .clicked()
+                                                {
+                                                    ui.ctx().copy_text(msg.content.clone());
+                                                }
+                                                if icon_btn(
+                                                    ui,
+                                                    Lucide::QUOTE,
+                                                    theme.text_silver,
+                                                    Color32::TRANSPARENT,
+                                                    "Trích dẫn (Quote) vào câu hỏi tiếp theo",
+                                                )
+                                                .clicked()
+                                                {
+                                                    action = Some(ChatUiAction::SetQuote(
+                                                        QuotedContext {
+                                                            source_msg_id: msg.id.clone(),
+                                                            author_label: msg
+                                                                .agent
+                                                                .name()
+                                                                .to_string(),
+                                                            snippet: msg.content.clone(),
+                                                            is_quote_block: true,
+                                                        },
+                                                    ));
+                                                }
+                                                if icon_btn(
+                                                    ui,
+                                                    Lucide::REPLY,
+                                                    theme.text_silver,
+                                                    Color32::TRANSPARENT,
+                                                    "Trả lời (Reply) tin nhắn này",
+                                                )
+                                                .clicked()
+                                                {
+                                                    action = Some(ChatUiAction::SetQuote(
+                                                        QuotedContext {
+                                                            source_msg_id: msg.id.clone(),
+                                                            author_label: msg
+                                                                .agent
+                                                                .name()
+                                                                .to_string(),
+                                                            snippet: msg.content.clone(),
+                                                            is_quote_block: false,
+                                                        },
+                                                    ));
+                                                }
+                                                if icon_btn(
+                                                    ui,
+                                                    Lucide::KANBAN,
+                                                    theme.text_silver,
+                                                    Color32::TRANSPARENT,
+                                                    "Chuyển nội dung này thành thẻ tác vụ trên Kanban",
+                                                )
+                                                .clicked()
+                                                {
+                                                    action =
+                                                        Some(ChatUiAction::SendMessageToKanban {
+                                                            title: msg
+                                                                .content
+                                                                .lines()
+                                                                .next()
+                                                                .unwrap_or("Task")
+                                                                .replace("**", "")
+                                                                .chars()
+                                                                .take(48)
+                                                                .collect(),
+                                                            detail: msg.content.clone(),
+                                                            agent: msg.agent,
+                                                        });
+                                                }
                                             });
-                                        ui.add_space(14.0);
+                                        });
+                                        ui.add_space(SPACE_4);
                                     }
                                     MessageRole::System => {
                                         Frame::none()
                                             .fill(theme.surface_1)
-                                            .rounding(Rounding::same(8.0))
+                                            .rounding(Rounding::same(ROUND_CTL))
                                             .stroke(Stroke::new(1.0, theme.border))
-                                            .inner_margin(Margin::symmetric(12.0, 8.0))
+                                            .inner_margin(Margin::symmetric(SPACE_3, SPACE_2))
                                             .show(ui, |ui| {
                                                 render_formatted_message_content(
                                                     ui,
@@ -541,77 +513,78 @@ pub fn render_qoder_chat_timeline(
                                                     &mut action,
                                                 );
                                             });
-                                        ui.add_space(10.0);
+                                        ui.add_space(SPACE_3);
                                     }
                                 }
                             }
 
-                            // 2b. Agy Quick-Start Action Cards when session only has the initial welcome message
+                            // 2b. Quick-Start Cards (Sentence case heading, strict 4px grid, ROUND_CTL = 8px)
                             if thread.messages.len() <= 1 {
-                                ui.add_space(6.0);
+                                ui.add_space(SPACE_2);
                                 ui.label(
-                                    egui::RichText::new("GỢI Ý BẮT ĐẦU NHANH (QUICK ACTIONS)")
+                                    egui::RichText::new("Gợi ý tác vụ nhanh")
                                         .color(theme.text_silver)
                                         .strong()
-                                        .size(10.5),
+                                        .size(FONT_FOOTNOTE),
                                 );
-                                ui.add_space(6.0);
+                                ui.add_space(SPACE_2);
 
-                                let card_w = ((reading_w - 12.0) * 0.5).max(180.0);
+                                let card_w = ((reading_w - SPACE_2) * 0.5).max(180.0);
                                 let quick_actions = [
                                     (
                                         Lucide::GIT_COMMIT,
                                         "Review Git Diff hiện tại",
-                                        "Đính kèm các thay đổi chưa commit và kiểm tra lỗi",
+                                        "Đính kèm thay đổi chưa commit và kiểm tra lỗi",
                                         "/diff",
                                     ),
                                     (
                                         Lucide::KANBAN,
                                         "Mở bảng điều phối Swarm Kanban",
-                                        "Quản lý tiến độ tác vụ 4 cột & chạy Agent dưới nền",
+                                        "Quản lý tiến độ tác vụ 4 cột & chạy Agent ngầm",
                                         "/kanban",
                                     ),
                                     (
                                         Lucide::SHIELD,
                                         "Quét bảo mật & AST Blast Radius",
-                                        "Kiểm tra lộ API key/Secret và thống kê cấu trúc code",
+                                        "Kiểm tra lộ Secret và thống kê kiến trúc dự án",
                                         "/env-guard",
                                     ),
                                     (
                                         Lucide::CODE,
                                         "Mở Live Code & Diff Editor",
-                                        "Xem so sánh Diff trực quan và chỉnh sửa file trực tiếp",
+                                        "So sánh Diff trực quan và chỉnh sửa trực tiếp",
                                         "/editor",
                                     ),
                                 ];
 
                                 for pair in quick_actions.chunks(2) {
                                     ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing = vec2(SPACE_2, SPACE_2);
                                         for (ic, title, sub, cmd) in pair {
                                             let q_resp = Frame::none()
                                                 .fill(theme.surface_1)
-                                                .rounding(Rounding::same(8.0))
+                                                .rounding(Rounding::same(ROUND_CTL))
                                                 .stroke(Stroke::new(1.0, theme.border))
-                                                .inner_margin(Margin::symmetric(12.0, 9.0))
+                                                .inner_margin(Margin::symmetric(SPACE_3, SPACE_2))
                                                 .show(ui, |ui| {
-                                                    ui.set_width((card_w - 26.0).max(140.0));
+                                                    ui.set_width((card_w - SPACE_6).max(140.0));
                                                     ui.horizontal(|ui| {
                                                         ui.label(
                                                             egui::RichText::new(*ic)
-                                                                .color(theme.accent_pop)
-                                                                .size(14.0),
+                                                                .color(theme.text_paper)
+                                                                .size(FONT_CALLOUT),
                                                         );
                                                         ui.vertical(|ui| {
                                                             ui.label(
                                                                 egui::RichText::new(*title)
                                                                     .color(theme.text_paper)
                                                                     .strong()
-                                                                    .size(11.8),
+                                                                    .size(FONT_FOOTNOTE),
                                                             );
                                                             ui.label(
                                                                 egui::RichText::new(*sub)
                                                                     .color(theme.text_silver)
-                                                                    .size(10.2),
+                                                                    .size(FONT_CAPTION),
                                                             );
                                                         });
                                                     });
@@ -625,10 +598,9 @@ pub fn render_qoder_chat_timeline(
                                                     (*cmd).to_string(),
                                                 ));
                                             }
-                                            ui.add_space(6.0);
                                         }
                                     });
-                                    ui.add_space(6.0);
+                                    ui.add_space(SPACE_2);
                                 }
                             }
                         },
@@ -636,24 +608,24 @@ pub fn render_qoder_chat_timeline(
                 });
             });
 
-        ui.add_space(6.0);
+        ui.add_space(SPACE_2);
 
-        // 3. Centered Bottom Composer & Popovers
+        // 3. Centered Bottom Composer & Popovers (Concentric R_outer=12px -> R_inner=8px/4px)
         ui.horizontal(|ui| {
-            ui.add_space(side_pad);
+            ui.add_space(side_pad.max(0.0));
             ui.allocate_ui_with_layout(
                 vec2(reading_w, ui.available_height()),
                 Layout::top_down(Align::Min),
                 |ui| {
                     ui.set_width(reading_w);
 
-                    // 3a. Interactive Floating Popover: @Files / $Skills / /Commands
+                    // 3a. Context Popover (@Files / $Skills / /Commands)
                     if composer_state.show_context_popup {
                         Frame::none()
-                            .fill(theme.panel_bg)
-                            .rounding(Rounding::same(10.0))
+                            .fill(theme.surface_3)
+                            .rounding(Rounding::same(ROUND_CARD))
                             .stroke(Stroke::new(1.0, theme.border_strong))
-                            .inner_margin(Margin::same(10.0))
+                            .inner_margin(Margin::same(SPACE_3))
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     for (t_idx, t_icon, t_tip) in [
@@ -668,11 +640,7 @@ pub fn render_qoder_chat_timeline(
                                         ),
                                         (
                                             1,
-                                            format!(
-                                                "{} Skills ({})",
-                                                Lucide::WAND,
-                                                skills.len()
-                                            ),
+                                            format!("{} Skills ({})", Lucide::WAND, skills.len()),
                                             "Kích hoạt Skill ($Skills)",
                                         ),
                                         (
@@ -682,25 +650,25 @@ pub fn render_qoder_chat_timeline(
                                         ),
                                     ] {
                                         let is_tab = composer_state.context_tab == t_idx;
-                                        if ui
-                                            .add(
-                                                egui::Button::new(
-                                                    egui::RichText::new(t_icon)
-                                                        .color(if is_tab {
-                                                            theme.on_accent
-                                                        } else {
-                                                            theme.text_paper
-                                                        })
-                                                        .strong()
-                                                        .size(11.0),
-                                                )
-                                                .fill(if is_tab {
-                                                    theme.accent_pop
+                                        let tab_btn = egui::Button::new(
+                                            egui::RichText::new(t_icon)
+                                                .color(if is_tab {
+                                                    theme.text_on_ink()
                                                 } else {
-                                                    theme.chip_bg
+                                                    theme.text_paper
                                                 })
-                                                .rounding(Rounding::same(5.0)),
-                                            )
+                                                .strong()
+                                                .size(FONT_CAPTION),
+                                        )
+                                        .fill(if is_tab {
+                                            theme.text_paper
+                                        } else {
+                                            theme.chip_bg
+                                        })
+                                        .rounding(Rounding::same(ROUND_XS));
+
+                                        if ui
+                                            .add_sized(vec2(0.0, CTL_SM), tab_btn)
                                             .on_hover_text(t_tip)
                                             .clicked()
                                         {
@@ -708,15 +676,15 @@ pub fn render_qoder_chat_timeline(
                                         }
                                     }
 
-                                    ui.add_space(6.0);
+                                    ui.add_space(SPACE_2);
                                     Frame::none()
                                         .fill(theme.input_bg)
-                                        .rounding(Rounding::same(5.0))
+                                        .rounding(Rounding::same(ROUND_XS))
                                         .stroke(Stroke::new(1.0, theme.border))
-                                        .inner_margin(Margin::symmetric(8.0, 3.0))
+                                        .inner_margin(Margin::symmetric(SPACE_2, SPACE_1))
                                         .show(ui, |ui| {
                                             ui.add_sized(
-                                                vec2(180.0, 18.0),
+                                                vec2(180.0, 16.0),
                                                 egui::TextEdit::singleline(
                                                     &mut composer_state.context_filter,
                                                 )
@@ -741,20 +709,22 @@ pub fn render_qoder_chat_timeline(
                                     });
                                 });
 
-                                ui.add_space(6.0);
+                                ui.add_space(SPACE_2);
                                 let q = composer_state.context_filter.trim().to_lowercase();
 
                                 ScrollArea::vertical()
                                     .id_salt("chat_context_popover_scroll")
-                                    .max_height(115.0)
+                                    .max_height(120.0)
                                     .show(ui, |ui| match composer_state.context_tab {
                                         0 => {
                                             if !file_changes.is_empty() {
                                                 ui.label(
-                                                    egui::RichText::new("FILE ĐANG THAY ĐỔI (GIT):")
-                                                        .color(theme.accent_pop)
-                                                        .strong()
-                                                        .size(10.0),
+                                                    egui::RichText::new(
+                                                        "File đang thay đổi trong Git",
+                                                    )
+                                                    .color(theme.text_silver)
+                                                    .strong()
+                                                    .size(FONT_CAPTION),
                                                 );
                                                 for fc in file_changes {
                                                     if !q.is_empty()
@@ -784,7 +754,7 @@ pub fn render_qoder_chat_timeline(
                                                                 } else {
                                                                     theme.text_paper
                                                                 })
-                                                                .size(11.0),
+                                                                .size(FONT_CAPTION),
                                                             )
                                                             .fill(Color32::TRANSPARENT),
                                                         )
@@ -800,14 +770,14 @@ pub fn render_qoder_chat_timeline(
                                                         );
                                                     }
                                                 }
-                                                ui.add_space(4.0);
+                                                ui.add_space(SPACE_1);
                                             }
 
                                             ui.label(
-                                                egui::RichText::new("TẤT CẢ FILE TRONG PROJECT:")
+                                                egui::RichText::new("Tất cả file trong dự án")
                                                     .color(theme.text_silver)
                                                     .strong()
-                                                    .size(10.0),
+                                                    .size(FONT_CAPTION),
                                             );
                                             for wf in workspace_files.iter().take(80) {
                                                 if !q.is_empty() && !wf.to_lowercase().contains(&q)
@@ -832,7 +802,7 @@ pub fn render_qoder_chat_timeline(
                                                             } else {
                                                                 theme.text_paper
                                                             })
-                                                            .size(11.0),
+                                                            .size(FONT_CAPTION),
                                                         )
                                                         .fill(Color32::TRANSPARENT),
                                                     )
@@ -875,7 +845,7 @@ pub fn render_qoder_chat_timeline(
                                                             } else {
                                                                 theme.text_paper
                                                             })
-                                                            .size(11.0),
+                                                            .size(FONT_CAPTION),
                                                         )
                                                         .fill(Color32::TRANSPARENT),
                                                     )
@@ -896,7 +866,7 @@ pub fn render_qoder_chat_timeline(
                                             let cmds = [
                                                 (
                                                     "/diff",
-                                                    "Đính kèm toàn bộ Git Diff hiện tại và yêu cầu AI review",
+                                                    "Đính kèm Git Diff hiện tại và yêu cầu AI review",
                                                 ),
                                                 (
                                                     "/commit",
@@ -936,7 +906,7 @@ pub fn render_qoder_chat_timeline(
                                                                 cmd, desc
                                                             ))
                                                             .color(theme.text_paper)
-                                                            .size(11.0),
+                                                            .size(FONT_CAPTION),
                                                         )
                                                         .fill(Color32::TRANSPARENT),
                                                     )
@@ -953,26 +923,26 @@ pub fn render_qoder_chat_timeline(
                                         }
                                     });
                             });
-                        ui.add_space(4.0);
+                        ui.add_space(SPACE_1);
                     }
 
-                    // 3b. Interactive Floating Popover: Dedicated Agent 1-on-1 & Swarm Selector
+                    // 3b. Dedicated Agent 1-on-1 & Swarm Selector Popover
                     if composer_state.show_agent_popup {
                         Frame::none()
-                            .fill(theme.panel_bg)
-                            .rounding(Rounding::same(10.0))
+                            .fill(theme.surface_3)
+                            .rounding(Rounding::same(ROUND_CARD))
                             .stroke(Stroke::new(1.0, theme.border_strong))
-                            .inner_margin(Margin::same(10.0))
+                            .inner_margin(Margin::same(SPACE_3))
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     ui.label(
                                         egui::RichText::new(format!(
-                                            "{} CHỌN AGENT ĐIỀU PHỐI HOẶC CHAT 1-1",
+                                            "{} Chọn chế độ điều phối hoặc Chat 1-1",
                                             Lucide::BOT
                                         ))
-                                        .color(theme.accent_pop)
+                                        .color(theme.text_paper)
                                         .strong()
-                                        .size(11.0),
+                                        .size(FONT_FOOTNOTE),
                                     );
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         if icon_btn(
@@ -989,7 +959,7 @@ pub fn render_qoder_chat_timeline(
                                     });
                                 });
 
-                                ui.add_space(6.0);
+                                ui.add_space(SPACE_2);
                                 ScrollArea::vertical()
                                     .id_salt("agent_selector_popover_scroll")
                                     .max_height(120.0)
@@ -1012,7 +982,7 @@ pub fn render_qoder_chat_timeline(
                                                         },
                                                     )
                                                     .strong()
-                                                    .size(11.2),
+                                                    .size(FONT_FOOTNOTE),
                                                 )
                                                 .fill(Color32::TRANSPARENT),
                                             )
@@ -1024,7 +994,7 @@ pub fn render_qoder_chat_timeline(
                                             ));
                                         }
 
-                                        ui.add_space(4.0);
+                                        ui.add_space(SPACE_1);
                                         for &ag in ALL_AGENTS {
                                             let is_cur = thread.agent_mode
                                                 == ThreadAgentMode::DedicatedCore(ag);
@@ -1042,7 +1012,7 @@ pub fn render_qoder_chat_timeline(
                                                         } else {
                                                             theme.text_paper
                                                         })
-                                                        .size(11.0),
+                                                        .size(FONT_CAPTION),
                                                     )
                                                     .fill(Color32::TRANSPARENT),
                                                 )
@@ -1055,7 +1025,7 @@ pub fn render_qoder_chat_timeline(
                                         }
 
                                         if !custom_agents.is_empty() {
-                                            ui.add_space(4.0);
+                                            ui.add_space(SPACE_1);
                                             for (idx, ca) in custom_agents.iter().enumerate() {
                                                 if ui
                                                     .add(
@@ -1067,7 +1037,7 @@ pub fn render_qoder_chat_timeline(
                                                                 ca.role
                                                             ))
                                                             .color(theme.text_paper)
-                                                            .size(11.0),
+                                                            .size(FONT_CAPTION),
                                                         )
                                                         .fill(Color32::TRANSPARENT),
                                                     )
@@ -1082,23 +1052,22 @@ pub fn render_qoder_chat_timeline(
                                         }
                                     });
                             });
-                        ui.add_space(4.0);
+                        ui.add_space(SPACE_1);
                     }
 
-                    // 3c. Agy Elevated Prompt Composer Card
+                    // 3c. Elegans Concentric Composer Card (Outer ROUND_CARD = 12px, Padding = 12px, Inner Controls = ROUND_CTL 8px / ROUND_XS 4px)
                     let border_col = if !input_prompt.trim().is_empty() {
-                        theme.accent_pop
-                    } else {
                         theme.border_strong
+                    } else {
+                        theme.border
                     };
                     Frame::none()
                         .fill(theme.surface_1)
-                        .rounding(Rounding::same(12.0))
+                        .rounding(Rounding::same(ROUND_CARD))
                         .stroke(Stroke::new(1.0, border_col))
-                        .inner_margin(Margin::symmetric(14.0, 10.0))
+                        .inner_margin(Margin::same(SPACE_3))
                         .show(ui, |ui| {
                             ui.vertical(|ui| {
-                                // Active Quote / Reply Banner
                                 if let Some(ref q) = chat_mgr.active_quote {
                                     ui.horizontal(|ui| {
                                         let mode_ic = if q.is_quote_block {
@@ -1111,9 +1080,9 @@ pub fn render_qoder_chat_timeline(
                                                 "{} {}:",
                                                 mode_ic, q.author_label
                                             ))
-                                            .color(theme.accent_pop)
+                                            .color(theme.text_paper)
                                             .strong()
-                                            .size(10.5),
+                                            .size(FONT_CAPTION),
                                         );
                                         let short_snip: String = q
                                             .snippet
@@ -1126,7 +1095,7 @@ pub fn render_qoder_chat_timeline(
                                         ui.label(
                                             egui::RichText::new(short_snip)
                                                 .color(theme.text_silver)
-                                                .size(10.5),
+                                                .size(FONT_CAPTION),
                                         );
                                         if icon_btn(
                                             ui,
@@ -1140,10 +1109,9 @@ pub fn render_qoder_chat_timeline(
                                             action = Some(ChatUiAction::ClearQuote);
                                         }
                                     });
-                                    ui.add_space(4.0);
+                                    ui.add_space(SPACE_1);
                                 }
 
-                                // Attached @Files & $Skills Chips Row
                                 if !thread.attached_files.is_empty()
                                     || !thread.attached_skills.is_empty()
                                 {
@@ -1159,10 +1127,10 @@ pub fn render_qoder_chat_timeline(
                                                             Lucide::X
                                                         ))
                                                         .color(theme.text_paper)
-                                                        .size(10.2),
+                                                        .size(FONT_CAPTION),
                                                     )
                                                     .fill(theme.chip_bg)
-                                                    .rounding(Rounding::same(5.0)),
+                                                    .rounding(Rounding::same(ROUND_XS)),
                                                 )
                                                 .on_hover_text("Click để gỡ file này")
                                                 .clicked()
@@ -1183,10 +1151,10 @@ pub fn render_qoder_chat_timeline(
                                                             Lucide::X
                                                         ))
                                                         .color(theme.accent_pop)
-                                                        .size(10.2),
+                                                        .size(FONT_CAPTION),
                                                     )
                                                     .fill(theme.chip_bg)
-                                                    .rounding(Rounding::same(5.0)),
+                                                    .rounding(Rounding::same(ROUND_XS)),
                                                 )
                                                 .on_hover_text("Click để gỡ Skill này")
                                                 .clicked()
@@ -1197,10 +1165,9 @@ pub fn render_qoder_chat_timeline(
                                             }
                                         }
                                     });
-                                    ui.add_space(4.0);
+                                    ui.add_space(SPACE_1);
                                 }
 
-                                // Multiline Prompt Input
                                 let hint = match &thread.agent_mode {
                                     ThreadAgentMode::SwarmAuto => {
                                         format!(
@@ -1246,32 +1213,35 @@ pub fn render_qoder_chat_timeline(
                                     }
                                 }
 
-                                ui.add_space(6.0);
+                                ui.add_space(SPACE_2);
 
-                                // Bottom Composer Toolbar: Clear Labeled Context Pills + Agent & Send Button
+                                // Bottom Composer Controls (24px CTL_SM pills + 28px Ink Primary Send CTA)
                                 ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing = vec2(SPACE_1, 0.0);
+
                                     let file_lbl = if thread.attached_files.is_empty() {
                                         format!("{} @File", Lucide::AT_SIGN)
                                     } else {
                                         format!(
-                                            "{} @File ({})",
+                                            "{} @File · {}",
                                             Lucide::AT_SIGN,
                                             thread.attached_files.len()
                                         )
                                     };
                                     if ui
-                                        .add(
+                                        .add_sized(
+                                            vec2(0.0, CTL_SM),
                                             egui::Button::new(
                                                 egui::RichText::new(file_lbl)
                                                     .color(if !thread.attached_files.is_empty() {
-                                                        theme.accent_pop
+                                                        theme.text_paper
                                                     } else {
                                                         theme.text_silver
                                                     })
-                                                    .size(10.8),
+                                                    .size(FONT_CAPTION),
                                             )
                                             .fill(theme.chip_bg)
-                                            .rounding(Rounding::same(5.0)),
+                                            .rounding(Rounding::same(ROUND_XS)),
                                         )
                                         .on_hover_text("Đính kèm file trong Project hoặc Git Diff")
                                         .clicked()
@@ -1285,24 +1255,25 @@ pub fn render_qoder_chat_timeline(
                                         format!("{} $Skill", Lucide::WAND)
                                     } else {
                                         format!(
-                                            "{} $Skill ({})",
+                                            "{} $Skill · {}",
                                             Lucide::WAND,
                                             thread.attached_skills.len()
                                         )
                                     };
                                     if ui
-                                        .add(
+                                        .add_sized(
+                                            vec2(0.0, CTL_SM),
                                             egui::Button::new(
                                                 egui::RichText::new(skill_lbl)
                                                     .color(if !thread.attached_skills.is_empty() {
-                                                        theme.accent_pop
+                                                        theme.text_paper
                                                     } else {
                                                         theme.text_silver
                                                     })
-                                                    .size(10.8),
+                                                    .size(FONT_CAPTION),
                                             )
                                             .fill(theme.chip_bg)
-                                            .rounding(Rounding::same(5.0)),
+                                            .rounding(Rounding::same(ROUND_XS)),
                                         )
                                         .on_hover_text("Kích hoạt Skill (SKILL.md)")
                                         .clicked()
@@ -1313,17 +1284,18 @@ pub fn render_qoder_chat_timeline(
                                     }
 
                                     if ui
-                                        .add(
+                                        .add_sized(
+                                            vec2(0.0, CTL_SM),
                                             egui::Button::new(
                                                 egui::RichText::new(format!(
                                                     "{} /Lệnh",
                                                     Lucide::TERMINAL
                                                 ))
                                                 .color(theme.text_silver)
-                                                .size(10.8),
+                                                .size(FONT_CAPTION),
                                             )
                                             .fill(theme.chip_bg)
-                                            .rounding(Rounding::same(5.0)),
+                                            .rounding(Rounding::same(ROUND_XS)),
                                         )
                                         .on_hover_text(
                                             "Lệnh nhanh (/diff, /commit, /review, /kanban)",
@@ -1336,29 +1308,31 @@ pub fn render_qoder_chat_timeline(
                                     }
 
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                        // Send Button (Warm Terracotta Accent Circle)
+                                        ui.spacing_mut().item_spacing = vec2(SPACE_1, 0.0);
+
+                                        // Elegans Primary CTA: Ink fill (`theme.text_paper`) with `theme.text_on_ink()` icon
                                         let can_send = !input_prompt.trim().is_empty();
                                         let send_bg = if can_send {
-                                            theme.accent_pop
+                                            theme.text_paper
                                         } else {
                                             theme.chip_bg
                                         };
                                         let send_fg = if can_send {
-                                            theme.on_accent
+                                            theme.text_on_ink()
                                         } else {
                                             theme.text_silver
                                         };
                                         if ui
                                             .add_sized(
-                                                vec2(28.0, 24.0),
+                                                vec2(CTL_DEFAULT, CTL_SM),
                                                 egui::Button::new(
                                                     egui::RichText::new(Lucide::ARROW_UP)
                                                         .color(send_fg)
                                                         .strong()
-                                                        .size(13.0),
+                                                        .size(FONT_FOOTNOTE),
                                                 )
                                                 .fill(send_bg)
-                                                .rounding(Rounding::same(6.0)),
+                                                .rounding(Rounding::same(ROUND_XS)),
                                             )
                                             .on_hover_text("Gửi yêu cầu (Enter)")
                                             .clicked()
@@ -1367,11 +1341,10 @@ pub fn render_qoder_chat_timeline(
                                             action = Some(ChatUiAction::SendPrompt);
                                         }
 
-                                        ui.add_space(4.0);
-
                                         // Agent Mode Selector Pill
                                         if ui
-                                            .add(
+                                            .add_sized(
+                                                vec2(0.0, CTL_SM),
                                                 egui::Button::new(
                                                     egui::RichText::new(format!(
                                                         "{} {} {}",
@@ -1380,10 +1353,10 @@ pub fn render_qoder_chat_timeline(
                                                         Lucide::CHEVRON_DOWN
                                                     ))
                                                     .color(theme.text_paper)
-                                                    .size(10.8),
+                                                    .size(FONT_CAPTION),
                                                 )
                                                 .fill(theme.chip_bg)
-                                                .rounding(Rounding::same(5.0)),
+                                                .rounding(Rounding::same(ROUND_XS)),
                                             )
                                             .on_hover_text("Chọn Agent hoặc mở Chat 1-1")
                                             .clicked()
@@ -1392,9 +1365,6 @@ pub fn render_qoder_chat_timeline(
                                                 !composer_state.show_agent_popup;
                                         }
 
-                                        ui.add_space(4.0);
-
-                                        // Execution Mode Pill
                                         let (mode_ic, mode_lbl, next_mode) = match exec_mode {
                                             ExecutionMode::Auto => (
                                                 Lucide::CPU,
@@ -1413,19 +1383,22 @@ pub fn render_qoder_chat_timeline(
                                             ),
                                         };
                                         if ui
-                                            .add(
+                                            .add_sized(
+                                                vec2(0.0, CTL_SM),
                                                 egui::Button::new(
                                                     egui::RichText::new(format!(
                                                         "{} {}",
                                                         mode_ic, mode_lbl
                                                     ))
                                                     .color(theme.text_silver)
-                                                    .size(10.5),
+                                                    .size(FONT_CAPTION),
                                                 )
                                                 .fill(theme.chip_bg)
-                                                .rounding(Rounding::same(5.0)),
+                                                .rounding(Rounding::same(ROUND_XS)),
                                             )
-                                            .on_hover_text("Đổi chế độ thực thi (Auto / Gatekeeper / Fast)")
+                                            .on_hover_text(
+                                                "Đổi chế độ thực thi (Auto / Gatekeeper / Fast)",
+                                            )
                                             .clicked()
                                         {
                                             action =
@@ -1443,8 +1416,6 @@ pub fn render_qoder_chat_timeline(
     action
 }
 
-/// Parses inline Markdown (`**bold**` and `` `code` ``) into a clean `egui::text::LayoutJob`
-/// so raw `**` or backticks are never dumped directly on screen.
 pub fn parse_inline_markdown_job(
     text: &str,
     font_size: f32,
@@ -1473,7 +1444,6 @@ pub fn parse_inline_markdown_job(
     };
 
     while i < n {
-        // 1. Check for **bold**
         if i + 1 < n && chars[i] == '*' && chars[i + 1] == '*' {
             let mut end = i + 2;
             let mut found = false;
@@ -1491,7 +1461,7 @@ pub fn parse_inline_markdown_job(
                     &bold_str,
                     0.0,
                     TextFormat {
-                        font_id: FontId::new(font_size + 0.3, FontFamily::Proportional),
+                        font_id: FontId::new(font_size, FontFamily::Proportional),
                         color: theme.text_paper,
                         ..Default::default()
                     },
@@ -1501,7 +1471,6 @@ pub fn parse_inline_markdown_job(
             }
         }
 
-        // 2. Check for `inline code`
         if chars[i] == '`' {
             let mut end = i + 1;
             let mut found = false;
@@ -1519,8 +1488,8 @@ pub fn parse_inline_markdown_job(
                     &code_str,
                     0.0,
                     TextFormat {
-                        font_id: FontId::new(font_size - 0.5, FontFamily::Monospace),
-                        color: theme.accent_pop,
+                        font_id: FontId::new(FONT_FOOTNOTE, FontFamily::Monospace),
+                        color: theme.text_paper,
                         background: theme.code_bg,
                         ..Default::default()
                     },
@@ -1568,7 +1537,7 @@ fn render_formatted_message_content(
                 code_buf.clear();
             } else {
                 render_code_block_card(ui, theme, &code_lang, code_buf.trim_end(), action);
-                ui.add_space(6.0);
+                ui.add_space(SPACE_2);
                 in_code_block = false;
                 code_buf.clear();
             }
@@ -1582,57 +1551,56 @@ fn render_formatted_message_content(
         }
 
         if trimmed.is_empty() {
-            ui.add_space(4.0);
+            ui.add_space(SPACE_1);
             continue;
         }
 
-        // Headings (#, ##, ###)
         if let Some(h3) = trimmed.strip_prefix("### ") {
-            ui.add_space(4.0);
+            ui.add_space(SPACE_1);
             ui.label(
                 egui::RichText::new(h3.replace("**", ""))
                     .color(theme.text_paper)
                     .strong()
-                    .size(13.5),
+                    .size(FONT_CALLOUT),
             );
-            ui.add_space(2.0);
+            ui.add_space(SPACE_1);
         } else if let Some(h2) = trimmed.strip_prefix("## ") {
-            ui.add_space(5.0);
+            ui.add_space(SPACE_2);
             ui.label(
                 egui::RichText::new(h2.replace("**", ""))
                     .color(theme.text_paper)
                     .strong()
-                    .size(14.5),
+                    .size(FONT_HEADLINE),
             );
-            ui.add_space(2.0);
+            ui.add_space(SPACE_1);
         } else if let Some(h1) = trimmed.strip_prefix("# ") {
-            ui.add_space(6.0);
+            ui.add_space(SPACE_2);
             ui.label(
                 egui::RichText::new(h1.replace("**", ""))
                     .color(theme.text_paper)
                     .strong()
-                    .size(15.5),
+                    .size(FONT_HEADLINE),
             );
-            ui.add_space(3.0);
+            ui.add_space(SPACE_1);
         } else if let Some(bullet) = trimmed
             .strip_prefix("- ")
             .or_else(|| trimmed.strip_prefix("* "))
             .or_else(|| trimmed.strip_prefix("• "))
         {
             ui.horizontal_top(|ui| {
-                ui.add_space(6.0);
+                ui.add_space(SPACE_2);
                 ui.label(
                     egui::RichText::new("•")
-                        .color(theme.accent_pop)
+                        .color(theme.text_silver)
                         .strong()
-                        .size(13.0),
+                        .size(FONT_BODY),
                 );
-                render_inline_markdown_line(ui, theme, bullet, 12.8, theme.text_paper);
+                render_inline_markdown_line(ui, theme, bullet, FONT_BODY, theme.text_paper);
             });
-            ui.add_space(2.0);
+            ui.add_space(SPACE_1);
         } else {
-            render_inline_markdown_line(ui, theme, line, 12.8, theme.text_paper);
-            ui.add_space(2.0);
+            render_inline_markdown_line(ui, theme, line, FONT_BODY, theme.text_paper);
+            ui.add_space(SPACE_1);
         }
     }
 
@@ -1655,17 +1623,17 @@ fn render_code_block_card(
     };
     Frame::none()
         .fill(theme.code_bg)
-        .rounding(Rounding::same(8.0))
+        .rounding(Rounding::same(ROUND_CTL))
         .stroke(Stroke::new(1.0, theme.border))
-        .inner_margin(Margin::same(10.0))
+        .inner_margin(Margin::same(SPACE_3))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new(format!("{} {}", Lucide::CODE, lang_title))
-                        .color(theme.accent_pop)
+                        .color(theme.text_silver)
                         .monospace()
                         .strong()
-                        .size(10.5),
+                        .size(FONT_CAPTION),
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if icon_btn(
@@ -1682,7 +1650,7 @@ fn render_code_block_card(
                     if icon_btn(
                         ui,
                         Lucide::EDIT,
-                        theme.accent_pop,
+                        theme.text_paper,
                         theme.chip_bg,
                         "Đẩy sang Live Code Editor để chỉnh sửa & lưu file",
                     )
@@ -1694,12 +1662,12 @@ fn render_code_block_card(
                     }
                 });
             });
-            ui.add_space(4.0);
+            ui.add_space(SPACE_1);
             ui.label(
                 egui::RichText::new(block_text)
                     .color(theme.text_paper)
                     .monospace()
-                    .size(11.5),
+                    .size(FONT_FOOTNOTE),
             );
         });
 }
@@ -1713,7 +1681,7 @@ mod tests {
         let theme = CanhTheme::warm_dark();
         let job = parse_inline_markdown_job(
             "**VICTINI IDE** sẵn sàng với `~/.local/bin/agy`!",
-            13.0,
+            FONT_BODY,
             theme.text_paper,
             &theme,
         );

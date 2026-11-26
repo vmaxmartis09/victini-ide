@@ -463,3 +463,87 @@ pub fn run_seo_check(args: &[String]) -> i32 {
     println!("@fe:seo{}", out);
     0
 }
+
+static RE_EGUI_TINY_FONT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\.size\(\s*(?:8|9|10)(?:\.\d+)?\s*\)").unwrap());
+static RE_EGUI_NON_4PX_SPACE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"add_space\(\s*(?:1|2|3|4\.5|5|6|7|9|10|11|13|14|15)(?:\.0)?\s*\)").unwrap()
+});
+static RE_EGUI_NON_CONCENTRIC_ROUND: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"Rounding::same\(\s*(?:2\.5|3|3\.5|4\.5|5|6|7|9|10|11|14)(?:\.0)?\s*\)").unwrap()
+});
+
+pub fn scan_egui_rust_ui(file_path: &str, content: &str) -> Vec<RuleViolation> {
+    let mut violations = Vec::new();
+    for (idx, line) in content.lines().enumerate() {
+        let ln = idx + 1;
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        if RE_EGUI_TINY_FONT.is_match(line) {
+            violations.push(RuleViolation {
+                file: file_path.to_string(),
+                line: ln,
+                code: "VICIEO-UI-01",
+                severity: "BLOCK",
+                msg: "Cỡ chữ < 11px bị cấm trong egui (phải dùng FONT_CAPTION >= 11px).".to_string(),
+                fix: "Dùng FONT_CAPTION (11.0), FONT_FOOTNOTE (12.0), FONT_BODY (13.0)",
+            });
+        }
+        if RE_EGUI_NON_4PX_SPACE.is_match(line) {
+            violations.push(RuleViolation {
+                file: file_path.to_string(),
+                line: ln,
+                code: "VICIEO-UI-01B",
+                severity: "BLOCK",
+                msg: "Khoảng cách add_space lệch lưới 4px.".to_string(),
+                fix: "Dùng SPACE_1 (4.0), SPACE_2 (8.0), SPACE_3 (12.0), SPACE_4 (16.0)",
+            });
+        }
+        if RE_EGUI_NON_CONCENTRIC_ROUND.is_match(line) {
+            violations.push(RuleViolation {
+                file: file_path.to_string(),
+                line: ln,
+                code: "VICIEO-UI-01C",
+                severity: "BLOCK",
+                msg: "Bo góc Rounding::same lệch hệ đồng tâm Elegans.".to_string(),
+                fix: "Dùng ROUND_XS (4.0), ROUND_CTL (8.0), ROUND_CARD (12.0), ROUND_PANEL (16.0)",
+            });
+        }
+    }
+    violations
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn elegans_s3_guard_verifies_core_ui_modules_pass_4px_grid_and_typography() {
+        let core_ui_files = [
+            ("src/ui/header.rs", include_str!("../ui/header.rs")),
+            (
+                "src/ui/qoder_sidebar.rs",
+                include_str!("../ui/qoder_sidebar.rs"),
+            ),
+            ("src/ui/qoder_chat.rs", include_str!("../ui/qoder_chat.rs")),
+            (
+                "src/ui/beebox_dock.rs",
+                include_str!("../ui/beebox_dock.rs"),
+            ),
+        ];
+
+        let mut all_violations = Vec::new();
+        for (path, src) in core_ui_files {
+            let v = scan_egui_rust_ui(path, src);
+            all_violations.extend(v);
+        }
+
+        assert!(
+            all_violations.is_empty(),
+            "Elegans S3 Guard found UI violations: {:#?}",
+            all_violations
+        );
+    }
+}
