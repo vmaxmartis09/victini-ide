@@ -32,6 +32,23 @@ pub struct AgyBridge;
 impl AgyBridge {
     pub fn detect_agent_for_prompt(prompt: &str, fallback: ElegansAgent) -> ElegansAgent {
         let lower = prompt.to_lowercase();
+        let lane = crate::elegans::router::classify_lane(&lower);
+        if lane == "FE-DEPLOY" {
+            return ElegansAgent::DevopsDeployer;
+        }
+        let agents = crate::elegans::router::determine_agents(lane, &lower);
+        if let Some(primary) = agents.first().map(|s| s.as_str()) {
+            match primary {
+                "fe_design_scout" => return ElegansAgent::DesignScout,
+                "fe_ui_ux_critic" => return ElegansAgent::UiUxCritic,
+                "fe_code_auditor" => return ElegansAgent::CodeAuditor,
+                "fe_qa_tester" => return ElegansAgent::QaTester,
+                "fe_devops_deployer" => return ElegansAgent::DevopsDeployer,
+                "fe_senior_dev" => {}
+                _ => {}
+            }
+        }
+
         if lower.contains("design") || lower.contains("video") || lower.contains("reverse") {
             ElegansAgent::DesignScout
         } else if lower.contains("ui")
@@ -71,13 +88,22 @@ impl AgyBridge {
         attached_skills: &[(String, String)],
     ) -> String {
         let mut full = String::new();
+        let prompt_lc = raw_prompt.to_lowercase();
+        let lane = crate::elegans::router::classify_lane(&prompt_lc);
+        let (genre, seo) = crate::elegans::router::classify_genre(&prompt_lc);
+        let (archetype, _) =
+            crate::elegans::router::determine_solution_archetype(genre, &prompt_lc, "rust-egui");
 
         match agent_mode {
             ThreadAgentMode::SwarmAuto => {
                 full.push_str(&format!(
-                    "[Swarm Auto-Router -> Role: {} ({})]\n",
+                    "[Swarm Auto-Router -> Lane: {} | Genre: {} ({}) | Role: {} ({})]\n[Archetype: {}]\n",
+                    lane,
+                    genre,
+                    seo,
                     agent.title(),
-                    agent.ponytail_tier()
+                    agent.ponytail_tier(),
+                    archetype
                 ));
             }
             ThreadAgentMode::DedicatedCore(ag) => {
@@ -225,5 +251,47 @@ impl AgyBridge {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_agent_and_build_contextual_prompt_work() {
+        assert_eq!(
+            AgyBridge::detect_agent_for_prompt("Review và audit bảo mật code", ElegansAgent::SeniorDev),
+            ElegansAgent::CodeAuditor
+        );
+        assert_eq!(
+            AgyBridge::detect_agent_for_prompt("Deploy ứng dụng lên Cloudflare", ElegansAgent::SeniorDev),
+            ElegansAgent::DevopsDeployer
+        );
+        assert_eq!(
+            AgyBridge::detect_agent_for_prompt("Bóc tách video TikTok này", ElegansAgent::SeniorDev),
+            ElegansAgent::DesignScout
+        );
+
+        let prompt = AgyBridge::build_contextual_prompt(
+            "Tối ưu hàm xử lý giỏ hàng",
+            &Some(QuotedContext {
+                source_msg_id: "MSG-1".to_string(),
+                author_label: "fe_senior_dev".to_string(),
+                snippet: "fn calc() {}".to_string(),
+                is_quote_block: true,
+            }),
+            &ThreadAgentMode::SwarmAuto,
+            ElegansAgent::SeniorDev,
+            ExecutionMode::Gatekeeper,
+            &[("src/cart.rs".to_string(), "pub fn cart() {}".to_string())],
+            &[("ponytail".to_string(), "Zero bloat rule".to_string())],
+        );
+
+        assert!(prompt.contains("Execution Mode: GATEKEEPER"));
+        assert!(prompt.contains("--- Skill: $ponytail ---"));
+        assert!(prompt.contains("--- File: @src/cart.rs ---"));
+        assert!(prompt.contains("Quoted Block from fe_senior_dev"));
+        assert!(prompt.contains("Tối ưu hàm xử lý giỏ hàng"));
     }
 }

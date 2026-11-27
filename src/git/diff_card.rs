@@ -53,3 +53,20 @@ pub fn compute_diff(file_path: &str, old_content: &str, new_content: &str) -> Di
         new_content: new_content.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compute_diff_counts_insertions_and_deletions() {
+        let old_src = "fn a() {\n    println!(\"old\");\n}\n";
+        let new_src = "fn a() {\n    println!(\"new\");\n    println!(\"extra\");\n}\n";
+        let hunk = compute_diff("src/lib.rs", old_src, new_src);
+        assert_eq!(hunk.file_path, "src/lib.rs");
+        assert_eq!(hunk.removed_count, 1);
+        assert_eq!(hunk.added_count, 2);
+        assert!(hunk.lines.iter().any(|l| l.tag == '-' && l.content.contains("old")));
+        assert!(hunk.lines.iter().any(|l| l.tag == '+' && l.content.contains("extra")));
+    }
+}

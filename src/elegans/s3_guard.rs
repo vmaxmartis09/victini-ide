@@ -532,6 +532,18 @@ mod tests {
                 "src/ui/beebox_dock.rs",
                 include_str!("../ui/beebox_dock.rs"),
             ),
+            (
+                "src/ui/kanban_view.rs",
+                include_str!("../ui/kanban_view.rs"),
+            ),
+            (
+                "src/ui/studio_modals.rs",
+                include_str!("../ui/studio_modals.rs"),
+            ),
+            (
+                "src/ui/skill_studio.rs",
+                include_str!("../ui/skill_studio.rs"),
+            ),
         ];
 
         let mut all_violations = Vec::new();
@@ -545,5 +557,36 @@ mod tests {
             "Elegans S3 Guard found UI violations: {:#?}",
             all_violations
         );
+    }
+
+    #[test]
+    fn scan_fe_code_catches_ai_slop_and_passes_clean_components() {
+        let dirty = r#"
+import { Sparkles } from "lucide-react";
+export function BadCard() {
+    const s = useStudioStore();
+    return <div className="text-[9px] p-1.5 transition-all bg-[#7c3aed]" onClick={() => window.confirm("Sure?")}>Supercharge your workflow with +12.5%</div>;
+}
+"#;
+        let (blocks, warns) = scan_fe_code("tool/dashboard/BadCard.tsx", dirty, dirty);
+        assert!(blocks.iter().any(|v| v.code == "VICIEO-UI-01"));
+        assert!(blocks.iter().any(|v| v.code == "VICIEO-UI-01B"));
+        assert!(blocks.iter().any(|v| v.code == "VICIEO-UI-02"));
+        assert!(blocks.iter().any(|v| v.code == "VICIEO-UI-02B"));
+        assert!(blocks.iter().any(|v| v.code == "VICIEO-UI-02C"));
+        assert!(blocks.iter().any(|v| v.code == "VICIEO-UI-02D"));
+        assert!(blocks.iter().any(|v| v.code == "TASTE-WAVE6-COPY"));
+        assert!(blocks.iter().any(|v| v.code == "VICIEO-UI-03"));
+        assert!(blocks.iter().any(|v| v.code == "VICIEO-UI-04"));
+        assert!(warns.iter().any(|v| v.code == "VICIEO-UI-03B"));
+
+        let clean = r#"
+export function CleanCard() {
+    return <button type="button" className="text-body p-4 rounded-card transition-colors">Lưu cấu hình</button>;
+}
+"#;
+        let (b2, w2) = scan_fe_code("tool/dashboard/CleanCard.tsx", clean, clean);
+        assert!(b2.is_empty());
+        assert!(w2.is_empty());
     }
 }

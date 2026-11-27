@@ -13,9 +13,8 @@ pub use kanban_view::{render_agent_kanban_view, KanbanAction, KanbanComposerStat
 pub use layout_state::{CenterViewMode, LayoutState};
 pub use qoder_chat::{render_qoder_chat_timeline, ChatComposerUiState, ChatUiAction};
 pub use qoder_sidebar::{render_qoder_sidebar, SidebarAction};
-#[allow(unused_imports)]
 pub use skill_studio::{render_skill_agent_studio, SkillStudioAction, SkillStudioState};
 pub use studio_modals::{
-    render_agent_skill_studio, render_git_diff_viewer, render_projects_manager,
-    render_settings_modal, StudioEditorState, StudioModalAction,
+    render_git_diff_viewer, render_projects_manager, render_settings_modal, StudioEditorState,
+    StudioModalAction,
 };

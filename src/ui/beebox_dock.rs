@@ -35,6 +35,12 @@ pub enum BeeBoxAction {
     GitStashPop,
     OpenGitLabMr,
     TriggerTap(u32, u32),
+    TriggerSwipe {
+        x1: u32,
+        y1: u32,
+        x2: u32,
+        y2: u32,
+    },
     SwitchPreset(usize),
     CaptureAdbFrame,
     OpenPreviewUrl(String),
@@ -757,11 +763,34 @@ pub fn render_beebox_panel(
                                         Lucide::CAMERA,
                                         theme.text_paper,
                                         theme.surface_1,
-                                        "Chụp & đồng bộ khung hình ADB thực tế",
+                                        "Chụp & đồng bộ khung hình ADB / CDP thực tế",
                                     )
                                     .clicked()
                                     {
                                         action = Some(BeeBoxAction::CaptureAdbFrame);
+                                    }
+                                    if icon_btn(
+                                        ui,
+                                        Lucide::REFRESH,
+                                        if emu_state.auto_refresh_screencast {
+                                            theme.text_on_ink()
+                                        } else {
+                                            theme.text_silver
+                                        },
+                                        if emu_state.auto_refresh_screencast {
+                                            theme.text_paper
+                                        } else {
+                                            theme.surface_1
+                                        },
+                                        "Tự động đồng bộ khung hình Screencast",
+                                    )
+                                    .clicked()
+                                    {
+                                        emu_state.auto_refresh_screencast =
+                                            !emu_state.auto_refresh_screencast;
+                                        if emu_state.auto_refresh_screencast {
+                                            action = Some(BeeBoxAction::CaptureAdbFrame);
+                                        }
                                     }
                                 });
                             });
@@ -851,7 +880,41 @@ pub fn render_beebox_panel(
                                         vec2(emu_w, emu_h),
                                         egui::Sense::click_and_drag(),
                                     );
-                                    if resp.clicked() {
+                                    if resp.drag_stopped() {
+                                        let delta = resp.drag_delta();
+                                        if let Some(pos) = resp.interact_pointer_pos() {
+                                            let end_x = ((pos.x - rect.min.x) / rect.width())
+                                                .clamp(0.0, 1.0);
+                                            let end_y = ((pos.y - rect.min.y) / rect.height())
+                                                .clamp(0.0, 1.0);
+                                            let start_pos = pos - delta;
+                                            let start_x = ((start_pos.x - rect.min.x)
+                                                / rect.width())
+                                            .clamp(0.0, 1.0);
+                                            let start_y = ((start_pos.y - rect.min.y)
+                                                / rect.height())
+                                            .clamp(0.0, 1.0);
+                                            let x1 = (start_x * current_preset.width as f32) as u32;
+                                            let y1 =
+                                                (start_y * current_preset.height as f32) as u32;
+                                            let x2 = (end_x * current_preset.width as f32) as u32;
+                                            let y2 = (end_y * current_preset.height as f32) as u32;
+                                            if x1.abs_diff(x2) > 12 || y1.abs_diff(y2) > 12 {
+                                                emu_state.last_touch = Some(TouchRipple {
+                                                    norm_pos: Pos2::new(end_x, end_y),
+                                                    device_x: x2,
+                                                    device_y: y2,
+                                                    created_at: elapsed_secs,
+                                                });
+                                                action = Some(BeeBoxAction::TriggerSwipe {
+                                                    x1,
+                                                    y1,
+                                                    x2,
+                                                    y2,
+                                                });
+                                            }
+                                        }
+                                    } else if resp.clicked() {
                                         if let Some(pos) = resp.interact_pointer_pos() {
                                             let rel_x = ((pos.x - rect.min.x) / rect.width())
                                                 .clamp(0.0, 1.0);

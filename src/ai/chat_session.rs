@@ -134,17 +134,25 @@ impl ChatSessionManager {
     }
 
     fn storage_path(project_root: &Path) -> PathBuf {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_else(|_| ".".to_string());
-        let proj_name = project_root
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .replace(['/', '\\', ' '], "_");
-        let dir = PathBuf::from(home).join(".victini");
-        let _ = fs::create_dir_all(&dir);
-        dir.join(format!("chats_{}.json", proj_name))
+        #[cfg(test)]
+        {
+            let _ = fs::create_dir_all(project_root);
+            project_root.join(".victini_chats_test.json")
+        }
+        #[cfg(not(test))]
+        {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| ".".to_string());
+            let proj_name = project_root
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .replace(['/', '\\', ' '], "_");
+            let dir = PathBuf::from(home).join(".victini");
+            let _ = fs::create_dir_all(&dir);
+            dir.join(format!("chats_{}.json", proj_name))
+        }
     }
 
     pub fn save(&self, project_root: &Path) {
@@ -487,5 +495,46 @@ impl ChatSessionManager {
             duration_secs: 0.0,
             is_streaming: false,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dedicated_threads_and_stream_steps_work() {
+        let root = std::env::temp_dir().join(format!("victini_chat_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let mut mgr = ChatSessionManager::load_for_project(&root, "main");
+        assert_eq!(mgr.threads.len(), 1);
+
+        // Dedicated core agent thread deduplicates
+        let idx1 = mgr.open_or_create_dedicated_core_thread(ElegansAgent::CodeAuditor, "main");
+        let idx2 = mgr.open_or_create_dedicated_core_thread(ElegansAgent::CodeAuditor, "main");
+        assert_eq!(idx1, idx2);
+        assert_eq!(
+            mgr.active_thread().agent_mode,
+            ThreadAgentMode::DedicatedCore(ElegansAgent::CodeAuditor)
+        );
+
+        // Attach file and skill
+        mgr.toggle_attached_file("src/main.rs".to_string());
+        mgr.toggle_attached_skill("ponytail".to_string());
+        assert_eq!(mgr.active_thread().attached_files, vec!["src/main.rs"]);
+        assert_eq!(mgr.active_thread().attached_skills, vec!["ponytail"]);
+
+        // Stream lines separate tool actions from markdown content
+        let msg_id = mgr.begin_assistant_stream(ElegansAgent::CodeAuditor, None);
+        mgr.append_stream_line(&msg_id, "Reading src/main.rs", 0.2);
+        mgr.append_stream_line(&msg_id, "Kết quả kiểm tra an toàn.", 0.5);
+        mgr.finish_assistant_stream(&msg_id, 0.6);
+
+        let last_msg = mgr.active_thread().messages.last().unwrap();
+        assert!(!last_msg.is_streaming);
+        assert_eq!(last_msg.content, "Kết quả kiểm tra an toàn.");
+        assert!(last_msg.steps.iter().any(|s| s.detail == "Reading src/main.rs"));
+
+        let _ = fs::remove_dir_all(&root);
     }
 }

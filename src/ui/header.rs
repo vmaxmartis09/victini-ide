@@ -1,7 +1,4 @@
-use crate::theme::{
-    CanhTheme, Lucide, CTL_DEFAULT, FONT_CAPTION, FONT_FOOTNOTE, ROUND_CTL, ROUND_XS, SPACE_1,
-    SPACE_2, SPACE_3,
-};
+use crate::theme::{CanhTheme, Lucide, CTL_DEFAULT, FONT_FOOTNOTE, ROUND_CTL, ROUND_XS, SPACE_1, SPACE_2};
 use crate::ui::layout_state::{CenterViewMode, LayoutState, ResponsiveBreakpoint};
 use egui::{pos2, vec2, Align, Color32, Frame, Layout, Margin, Rounding, Stroke, Ui};
 
@@ -52,7 +49,7 @@ pub fn render_transparent_header(
     ui: &mut Ui,
     theme: &CanhTheme,
     project_name: &str,
-    branch_name: &str,
+    _branch_name: &str,
     _active_thread_title: &str,
     running_bg_count: usize,
     layout: &LayoutState,
@@ -60,145 +57,158 @@ pub fn render_transparent_header(
 ) -> Option<HeaderAction> {
     let mut action = None;
 
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing = vec2(SPACE_2, SPACE_2);
+    ui.columns(3, |cols| {
+        // 1. LEFT ZONE: Sidebar Toggle (28x28) + Project Selector Pill (Single-source Project identity)
+        cols[0].horizontal(|ui| {
+            ui.spacing_mut().item_spacing = vec2(SPACE_2, 0.0);
+            let left_pad = match breakpoint {
+                ResponsiveBreakpoint::Compact => SPACE_2,
+                _ => 72.0,
+            };
+            ui.add_space(left_pad);
 
-        let left_pad = match breakpoint {
-            ResponsiveBreakpoint::Compact => SPACE_3,
-            _ => 72.0,
-        };
-        ui.add_space(left_pad);
+            let left_active = layout.show_left_sidebar && !layout.left_mini_mode;
+            if icon_btn(
+                ui,
+                Lucide::PANEL_LEFT,
+                if left_active {
+                    theme.text_paper
+                } else {
+                    theme.text_silver
+                },
+                if left_active {
+                    theme.surface_2
+                } else {
+                    Color32::TRANSPARENT
+                },
+                "Đóng/mở thanh điều hướng bên trái (⌘B)",
+            )
+            .clicked()
+            {
+                action = Some(HeaderAction::ToggleLeftSidebar);
+            }
 
-        // 1. Left: Sidebar Toggle (28x28) + Flat Project/Branch Button
-        let left_active = layout.show_left_sidebar && !layout.left_mini_mode;
-        if icon_btn(
-            ui,
-            Lucide::PANEL_LEFT,
-            if left_active {
-                theme.text_paper
-            } else {
-                theme.text_silver
-            },
-            if left_active {
+            let is_proj_modal = layout.center_mode == CenterViewMode::ProjectsModal;
+            let proj_btn = egui::Button::new(
+                egui::RichText::new(format!("{} {}", Lucide::FOLDER, project_name))
+                    .color(theme.text_paper)
+                    .strong()
+                    .size(FONT_FOOTNOTE),
+            )
+            .fill(if is_proj_modal {
                 theme.surface_2
             } else {
-                Color32::TRANSPARENT
-            },
-            "Đóng/mở thanh điều hướng bên trái (⌘B)",
-        )
-        .clicked()
-        {
-            action = Some(HeaderAction::ToggleLeftSidebar);
-        }
-
-        let proj_btn = egui::Button::new(
-            egui::RichText::new(format!(
-                "{} {}  ·  {} {}",
-                Lucide::FOLDER,
-                project_name,
-                Lucide::GIT_BRANCH,
-                branch_name
+                theme.surface_1
+            })
+            .stroke(Stroke::new(
+                1.0,
+                if is_proj_modal {
+                    theme.accent_pop
+                } else {
+                    theme.border
+                },
             ))
-            .color(theme.text_paper)
-            .size(FONT_FOOTNOTE),
-        )
-        .fill(theme.surface_1)
-        .stroke(Stroke::new(1.0, theme.border))
-        .rounding(Rounding::same(ROUND_CTL));
+            .rounding(Rounding::same(ROUND_CTL));
 
-        if ui
-            .add_sized(vec2(0.0, CTL_DEFAULT), proj_btn)
-            .on_hover_text("Project & nhánh Git hiện tại (Click để quản lý danh sách Project)")
-            .clicked()
-        {
-            action = Some(HeaderAction::OpenProjectsModal);
-        }
+            if ui
+                .add_sized(vec2(0.0, CTL_DEFAULT), proj_btn)
+                .on_hover_text("Quản lý & chuyển đổi Project trong Workspace")
+                .clicked()
+            {
+                action = Some(HeaderAction::OpenProjectsModal);
+            }
+        });
 
-        ui.add_space(SPACE_2);
-
-        // 2. Center: Elegans Floating Pill Navigation (< 3% Brand Accent: Active tab uses surface_2 + 1 bottom accent underline)
-        Frame::none()
-            .fill(theme.surface_1)
-            .rounding(Rounding::same(ROUND_CTL))
-            .stroke(Stroke::new(1.0, theme.border))
-            .inner_margin(Margin::same(SPACE_1))
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing = vec2(SPACE_1, 0.0);
-                ui.horizontal(|ui| {
-                    let kanban_lbl = if running_bg_count > 0 {
-                        format!("{} Kanban · {}", Lucide::KANBAN, running_bg_count)
-                    } else {
-                        format!("{} Kanban", Lucide::KANBAN)
-                    };
-
-                    let tabs = [
-                        (
-                            CenterViewMode::ChatTimeline,
-                            format!("{} Hội thoại", Lucide::MESSAGE_SQUARE),
-                            "Hội thoại AI & Điều phối (Chat Timeline)",
-                        ),
-                        (
-                            CenterViewMode::KanbanBoard,
-                            kanban_lbl,
-                            "Bảng điều phối tác vụ 4 cột (Swarm Kanban · ⌘K)",
-                        ),
-                        (
-                            CenterViewMode::SplitChatKanban,
-                            format!("{} Song song", Lucide::COLUMNS),
-                            "Chia đôi màn hình: Hội thoại & Kanban",
-                        ),
-                        (
-                            CenterViewMode::GitDiffModal,
-                            format!("{} Code & Diff", Lucide::CODE),
-                            "So sánh Git Diff & sửa file trực tiếp",
-                        ),
-                        (
-                            CenterViewMode::AgentSkillStudio,
-                            format!("{} Skills & Agents", Lucide::SPARKLES),
-                            "Quản lý, chỉnh sửa & nạp Skills / Subagents",
-                        ),
-                    ];
-
-                    for (mode, label, tip) in tabs {
-                        let is_active = layout.center_mode == mode;
-                        let btn = egui::Button::new(
-                            egui::RichText::new(label)
-                                .color(if is_active {
-                                    theme.text_paper
-                                } else {
-                                    theme.text_silver
-                                })
-                                .strong()
-                                .size(FONT_CAPTION),
-                        )
-                        .fill(if is_active {
-                            theme.surface_2
+        // 2. CENTER ZONE: Strictly Centered Icon-First Navigation Bar (Zero Icon+Label Clutter)
+        cols[1].vertical_centered(|ui| {
+            Frame::none()
+                .fill(theme.surface_1)
+                .rounding(Rounding::same(ROUND_CTL))
+                .stroke(Stroke::new(1.0, theme.border))
+                .inner_margin(Margin::same(SPACE_1))
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing = vec2(SPACE_1, 0.0);
+                    ui.horizontal(|ui| {
+                        let kanban_icon = if running_bg_count > 0 {
+                            format!("{} {}", Lucide::KANBAN, running_bg_count)
                         } else {
-                            Color32::TRANSPARENT
-                        })
-                        .rounding(Rounding::same(ROUND_XS));
+                            Lucide::KANBAN.to_string()
+                        };
 
-                        let resp = ui.add_sized(vec2(0.0, 24.0), btn).on_hover_text(tip);
-                        if is_active {
-                            // Elegans < 3% brand accent rule: single 2px accent underline on active tab
-                            let r = resp.rect;
-                            ui.painter().line_segment(
-                                [
-                                    pos2(r.left() + SPACE_2, r.bottom() - 1.0),
-                                    pos2(r.right() - SPACE_2, r.bottom() - 1.0),
-                                ],
-                                Stroke::new(2.0, theme.accent_pop),
-                            );
+                        let tabs = [
+                            (
+                                CenterViewMode::ChatTimeline,
+                                Lucide::MESSAGE_SQUARE.to_string(),
+                                "Hội thoại AI & Điều phối (Chat Timeline)",
+                            ),
+                            (
+                                CenterViewMode::KanbanBoard,
+                                kanban_icon,
+                                "Bảng điều phối tác vụ 4 cột (Swarm Kanban · ⌘K)",
+                            ),
+                            (
+                                CenterViewMode::SplitChatKanban,
+                                Lucide::COLUMNS.to_string(),
+                                "Chia đôi màn hình: Hội thoại & Kanban",
+                            ),
+                            (
+                                CenterViewMode::GitDiffModal,
+                                Lucide::CODE.to_string(),
+                                "So sánh Git Diff & sửa file trực tiếp",
+                            ),
+                            (
+                                CenterViewMode::AgentSkillStudio,
+                                Lucide::SPARKLES.to_string(),
+                                "Quản lý, chỉnh sửa & nạp Skills / Subagents",
+                            ),
+                        ];
+
+                        for (mode, icon_txt, tip) in tabs {
+                            let is_active = layout.center_mode == mode;
+                            let btn_w = if mode == CenterViewMode::KanbanBoard && running_bg_count > 0
+                            {
+                                42.0
+                            } else {
+                                32.0
+                            };
+                            let btn = egui::Button::new(
+                                egui::RichText::new(icon_txt)
+                                    .color(if is_active {
+                                        theme.text_paper
+                                    } else {
+                                        theme.text_silver
+                                    })
+                                    .strong()
+                                    .size(FONT_FOOTNOTE),
+                            )
+                            .fill(if is_active {
+                                theme.surface_2
+                            } else {
+                                Color32::TRANSPARENT
+                            })
+                            .rounding(Rounding::same(ROUND_XS));
+
+                            let resp = ui.add_sized(vec2(btn_w, 24.0), btn).on_hover_text(tip);
+                            if is_active {
+                                let r = resp.rect;
+                                ui.painter().line_segment(
+                                    [
+                                        pos2(r.left() + 6.0, r.bottom() - 1.0),
+                                        pos2(r.right() - 6.0, r.bottom() - 1.0),
+                                    ],
+                                    Stroke::new(2.0, theme.accent_pop),
+                                );
+                            }
+                            if resp.clicked() {
+                                action = Some(HeaderAction::SetCenterMode(mode));
+                            }
                         }
-                        if resp.clicked() {
-                            action = Some(HeaderAction::SetCenterMode(mode));
-                        }
-                    }
+                    });
                 });
-            });
+        });
 
-        // 3. Right: Single-Source Utility Controls (No duplicate buttons anywhere else)
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        // 3. RIGHT ZONE: Right-Aligned System Utility Icon Controls
+        cols[2].with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing = vec2(SPACE_1, 0.0);
 
             if icon_btn(

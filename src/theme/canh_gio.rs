@@ -160,7 +160,19 @@ impl CanhTheme {
     }
 
     pub fn warm_dusk() -> Self {
-        Self::warm_dark()
+        let mut t = Self::warm_dark();
+        t.id = CanhId::WarmDusk;
+        t.name = "Hoàng Hôn (Elegans Warm Dusk)";
+        t.bg_ink = Color32::from_rgb(0x18, 0x16, 0x1A);
+        t.bg_field = Color32::from_rgb(0x20, 0x1D, 0x22);
+        t.panel_bg = Color32::from_rgb(0x28, 0x24, 0x2B);
+        t.panel_hover = Color32::from_rgb(0x31, 0x2C, 0x35);
+        t.surface_1 = Color32::from_rgb(0x27, 0x23, 0x2A);
+        t.surface_2 = Color32::from_rgb(0x32, 0x2D, 0x36);
+        t.surface_3 = Color32::from_rgb(0x3B, 0x35, 0x40);
+        t.border = Color32::from_rgb(0x36, 0x31, 0x3B);
+        t.border_strong = Color32::from_rgb(0x4A, 0x43, 0x52);
+        t
     }
 
     pub fn toggle_light_dark(&self) -> Self {
@@ -172,7 +184,7 @@ impl CanhTheme {
     }
 
     pub fn all_themes() -> Vec<Self> {
-        vec![Self::warm_dark(), Self::warm_light()]
+        vec![Self::warm_dark(), Self::warm_light(), Self::warm_dusk()]
     }
 
     pub fn dan_theme() -> Self {

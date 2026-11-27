@@ -164,17 +164,25 @@ impl AgentKanbanManager {
     }
 
     fn storage_path(project_root: &Path) -> PathBuf {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_else(|_| ".".to_string());
-        let proj_name = project_root
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .replace(['/', '\\', ' '], "_");
-        let dir = PathBuf::from(home).join(".victini");
-        let _ = fs::create_dir_all(&dir);
-        dir.join(format!("kanban_{}.json", proj_name))
+        #[cfg(test)]
+        {
+            let _ = fs::create_dir_all(project_root);
+            project_root.join(".victini_kanban_test.json")
+        }
+        #[cfg(not(test))]
+        {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| ".".to_string());
+            let proj_name = project_root
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .replace(['/', '\\', ' '], "_");
+            let dir = PathBuf::from(home).join(".victini");
+            let _ = fs::create_dir_all(&dir);
+            dir.join(format!("kanban_{}.json", proj_name))
+        }
     }
 
     pub fn save(&self, project_root: &Path) {
@@ -597,11 +605,30 @@ impl AgentKanbanManager {
             .as_deref()
             .map(|n| format!("\nGhi chú cần sửa từ lần kiểm tra trước: {}", n))
             .unwrap_or_default();
-        let custom_sys = custom_agent_prompt
+        let resolved_custom_prompt = custom_agent_prompt.or_else(|| {
+            let custom_name = task.custom_agent_name.as_deref()?.trim();
+            if custom_name.is_empty() {
+                return None;
+            }
+            let (_, discovered_agents) =
+                crate::config::SkillDiscovery::scan_workspace(&workdir);
+            discovered_agents
+                .into_iter()
+                .find(|a| a.name == custom_name)
+                .map(|a| a.body)
+        });
+        let custom_sys = resolved_custom_prompt
             .as_deref()
             .filter(|s| !s.trim().is_empty())
             .map(|s| format!("\nChỉ dẫn chuyên biệt của Agent:\n{}\n", s))
             .unwrap_or_default();
+
+        let effective_workdir = crate::git::GitManager::new(workdir.clone())
+            .list_worktrees()
+            .into_iter()
+            .find(|wt| wt.name == task.worktree_branch)
+            .map(|wt| wt.path)
+            .unwrap_or(workdir);
 
         let prompt = format!(
             "[Swarm Background Task {} - Role: {} ({})]{}\nBranch: {}\nNhiệm vụ: {}\nChi tiết: {}{}{}\nHãy trả lời ngắn gọn các bước kiểm tra và kết quả thực hiện.",
@@ -627,7 +654,7 @@ impl AgentKanbanManager {
 
             let agy_bin = crate::config::paths::get_agy_path();
             let mut cmd = Command::new(&agy_bin);
-            cmd.current_dir(&workdir);
+            cmd.current_dir(&effective_workdir);
             cmd.arg("-p").arg(&prompt);
             cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
@@ -822,12 +849,18 @@ impl AgentKanbanManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TEST_SEQ: AtomicUsize = AtomicUsize::new(1);
 
     fn temp_root() -> PathBuf {
+        let seq = TEST_SEQ.fetch_add(1, Ordering::SeqCst);
         let p = std::env::temp_dir().join(format!(
-            "victini_kanban_test_{}",
-            std::process::id()
+            "victini_kanban_test_{}_{}",
+            std::process::id(),
+            seq
         ));
+        let _ = fs::remove_dir_all(&p);
         let _ = fs::create_dir_all(&p);
         p
     }
@@ -902,5 +935,6 @@ mod tests {
         assert!(mgr.tasks.iter().all(|t| t.id != "TASK-04"));
         mgr.restore_task(removed, &root);
         assert!(mgr.tasks.iter().any(|t| t.id == "TASK-04"));
+        let _ = fs::remove_dir_all(&root);
     }
 }

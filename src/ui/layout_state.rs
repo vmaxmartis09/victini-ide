@@ -82,3 +82,25 @@ impl LayoutState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn responsive_breakpoints_auto_adapt_side_panels() {
+        let mut layout = LayoutState::default();
+        assert_eq!(layout.compute_breakpoint(1320.0), ResponsiveBreakpoint::Wide);
+        assert!(layout.show_left_sidebar && !layout.left_mini_mode && layout.show_right_dock);
+
+        assert_eq!(layout.compute_breakpoint(760.0), ResponsiveBreakpoint::Compact);
+        assert!(layout.left_mini_mode);
+        assert!(!layout.show_right_dock);
+
+        assert_eq!(layout.compute_breakpoint(1080.0), ResponsiveBreakpoint::Medium);
+        assert!(layout.show_left_sidebar && !layout.left_mini_mode);
+
+        assert_eq!(layout.compute_breakpoint(1400.0), ResponsiveBreakpoint::Wide);
+        assert!(layout.show_right_dock && !layout.left_mini_mode);
+    }
+}

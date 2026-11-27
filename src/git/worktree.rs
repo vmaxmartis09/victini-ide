@@ -629,3 +629,36 @@ impl GitManager {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn noisy_build_paths_and_ai_commit_message_work() {
+        assert!(GitManager::is_noisy_build_path("target/debug/deps/app.d"));
+        assert!(GitManager::is_noisy_build_path("web/node_modules/react/index.js"));
+        assert!(GitManager::is_noisy_build_path(".DS_Store"));
+        assert!(!GitManager::is_noisy_build_path("src/ui/kanban_view.rs"));
+
+        let mgr = GitManager::new(PathBuf::from("."));
+        let changes = vec![
+            GitFileChange {
+                path: "src/ui/header.rs".to_string(),
+                status: "M".to_string(),
+                is_staged: true,
+                added_lines: 12,
+                removed_lines: 4,
+            },
+            GitFileChange {
+                path: "src/ai/kanban.rs".to_string(),
+                status: "M".to_string(),
+                is_staged: true,
+                added_lines: 8,
+                removed_lines: 2,
+            },
+        ];
+        let msg = mgr.generate_ai_commit_message(&changes);
+        assert!(msg.starts_with("fix(ui,ai): update header.rs, kanban.rs (+20 -6)"));
+    }
+}

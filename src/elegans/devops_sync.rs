@@ -69,18 +69,22 @@ fn parse_env_keys(path: &Path) -> HashSet<String> {
     keys
 }
 
-pub fn run_env_guard(args: &[String]) -> i32 {
-    let root = crate::elegans::router::detect_workspace_root();
-    let target = args
-        .first()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| root.clone());
+#[derive(Debug, Clone)]
+pub struct EnvGuardReport {
+    pub ok: bool,
+    pub used_env_count: usize,
+    pub defined_local_count: usize,
+    pub public_secret_leaks: Vec<String>,
+    pub hardcoded_secret_files: Vec<String>,
+    pub undocumented_in_example: Vec<String>,
+}
 
+pub fn inspect_env_guard(root: &Path, target: &Path) -> EnvGuardReport {
     let mut used_keys: HashSet<String> = HashSet::new();
     let mut public_secret_leaks: Vec<String> = Vec::new();
     let mut hardcoded_secrets: Vec<String> = Vec::new();
 
-    for entry in WalkDir::new(&target).into_iter().flatten() {
+    for entry in WalkDir::new(target).max_depth(6).into_iter().flatten() {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -90,11 +94,15 @@ pub fn run_env_guard(args: &[String]) -> i32 {
             || p_str.contains("/.next")
             || p_str.contains("/target/")
             || p_str.contains("/.git/")
+            || p_str.contains("/bin/")
         {
             continue;
         }
         let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if !matches!(ext, "ts" | "tsx" | "js" | "mjs" | "vue" | "svelte" | "astro") {
+        if !matches!(
+            ext,
+            "rs" | "ts" | "tsx" | "js" | "mjs" | "vue" | "svelte" | "astro" | "toml" | "env"
+        ) {
             continue;
         }
         if let Ok(raw) = fs::read_to_string(p) {
@@ -117,7 +125,12 @@ pub fn run_env_guard(args: &[String]) -> i32 {
                 }
             }
             if RE_SECRET_VALUE.is_match(&raw) {
-                hardcoded_secrets.push(p_str);
+                let rel = p
+                    .strip_prefix(root)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .to_string();
+                hardcoded_secrets.push(rel);
             }
         }
     }
@@ -135,16 +148,35 @@ pub fn run_env_guard(args: &[String]) -> i32 {
     let missing_in_example: Vec<String> = used_keys.difference(&env_example).cloned().collect();
     let ok = public_secret_leaks.is_empty() && hardcoded_secrets.is_empty();
 
+    EnvGuardReport {
+        ok,
+        used_env_count: used_keys.len(),
+        defined_local_count: env_local.len(),
+        public_secret_leaks,
+        hardcoded_secret_files: hardcoded_secrets,
+        undocumented_in_example: missing_in_example,
+    }
+}
+
+pub fn run_env_guard(args: &[String]) -> i32 {
+    let root = crate::elegans::router::detect_workspace_root();
+    let target = args
+        .first()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.clone());
+
+    let report = inspect_env_guard(&root, &target);
+
     let out = json!({
-        "ok": ok,
-        "used_env_count": used_keys.len(),
-        "defined_local_count": env_local.len(),
-        "public_secret_leaks": public_secret_leaks,
-        "hardcoded_secret_files": hardcoded_secrets,
-        "undocumented_in_example": missing_in_example
+        "ok": report.ok,
+        "used_env_count": report.used_env_count,
+        "defined_local_count": report.defined_local_count,
+        "public_secret_leaks": report.public_secret_leaks,
+        "hardcoded_secret_files": report.hardcoded_secret_files,
+        "undocumented_in_example": report.undocumented_in_example
     });
     println!("@fe:env{}", out);
-    if ok { 0 } else { 1 }
+    if report.ok { 0 } else { 1 }
 }
 
 pub fn run_sync(args: &[String]) -> i32 {
@@ -293,5 +325,19 @@ pub fn run_update() -> i32 {
             eprintln!("❌ Lỗi khi cập nhật Elegans từ GitHub.");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inspect_env_guard_verifies_workspace_has_zero_leaked_secrets() {
+        let root = Path::new(".");
+        let rep = inspect_env_guard(root, &root.join("src"));
+        assert!(rep.ok, "Workspace must have 0 leaked secrets: {:?}", rep);
+        assert!(rep.hardcoded_secret_files.is_empty());
+        assert!(rep.public_secret_leaks.is_empty());
     }
 }

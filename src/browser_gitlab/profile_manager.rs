@@ -34,9 +34,23 @@ impl BrowserProfileManager {
     /// Protects user 'Dad' space by keeping dedicated Victini Vibe workspace profile
     pub fn launch_or_connect(&mut self, initial_url: Option<&str>) -> Result<()> {
         self.ensure_profile_dir()?;
-
-        let bin = self.browser_bin.as_ref().context("No compatible browser (Ego Lite/Chrome) found on system")?;
         let url = initial_url.unwrap_or("https://gitlab.com");
+
+        // If browser is already running on CDP port, open a new tab via CdpClient
+        if self.is_running() {
+            let port = self.cdp_port;
+            let url_owned = url.to_string();
+            tokio::spawn(async move {
+                let client = crate::browser_gitlab::cdp_client::CdpClient::new(port);
+                let _ = client.open_url(&url_owned).await;
+            });
+            return Ok(());
+        }
+
+        let bin = self
+            .browser_bin
+            .as_ref()
+            .context("No compatible browser (Ego Lite/Chrome) found on system")?;
 
         let child = Command::new(bin)
             .arg(format!("--remote-debugging-port={}", self.cdp_port))

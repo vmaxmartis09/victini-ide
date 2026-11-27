@@ -647,3 +647,25 @@ pub fn run_route(args: &[String]) -> i32 {
     }
     0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn router_classifies_lanes_genres_and_stacks_accurately() {
+        assert_eq!(classify_lane("deploy dự án lên cloudflare"), "FE-DEPLOY");
+        assert_eq!(classify_lane("review và kiểm định sloplint"), "FE-AUDIT-QA");
+        assert_eq!(
+            classify_lane("thiết kế lại trang dashboard quản lý khách hàng crm"),
+            "FE-MASTER-BUILD"
+        );
+
+        let (genre, seo) = classify_genre("tạo trang giỏ hàng checkout với payos");
+        assert_eq!(genre, "ecommerce-marketplace");
+        assert_eq!(seo, "full-public-seo");
+
+        let stack = detect_stack(Path::new("."), "dựng bằng svelte5");
+        assert_eq!(stack, "svelte5-kit");
+    }
+}

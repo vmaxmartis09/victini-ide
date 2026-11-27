@@ -15,6 +15,7 @@ pub enum SkillStudioAction {
     CloseToChat,
     RefreshWorkspace,
     InsertIntoChat(String),
+    OpenDedicatedAgentChat(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -465,7 +466,7 @@ pub fn render_skill_agent_studio(
                             .strong()
                             .size(13.0),
                     );
-                    ui.add_space(10.0);
+                    ui.add_space(12.0);
 
                     // Segmented Tabs
                     for (tab, label, count) in [
@@ -498,7 +499,7 @@ pub fn render_skill_agent_studio(
                                         Color32::TRANSPARENT
                                     },
                                 ))
-                                .rounding(Rounding::same(5.0)),
+                                .rounding(Rounding::same(8.0)),
                             )
                             .clicked()
                         {
@@ -548,7 +549,7 @@ pub fn render_skill_agent_studio(
                                         .size(11.0),
                                 )
                                 .fill(theme.accent_pop)
-                                .rounding(Rounding::same(5.0)),
+                                .rounding(Rounding::same(8.0)),
                             )
                             .clicked()
                         {
@@ -571,7 +572,7 @@ pub fn render_skill_agent_studio(
                                 )
                                 .fill(theme.surface_2)
                                 .stroke(Stroke::new(1.0, theme.border_strong))
-                                .rounding(Rounding::same(5.0)),
+                                .rounding(Rounding::same(8.0)),
                             )
                             .clicked()
                         {
@@ -584,10 +585,10 @@ pub fn render_skill_agent_studio(
         // 2. STATUS / UNDO BANNERS
         if let Some((trashed, ts)) = state.undo_trashed.clone() {
             let rem = (6.5 - ts.elapsed().as_secs_f32()).max(0.0);
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             Frame::none()
                 .fill(theme.surface_2)
-                .rounding(Rounding::same(6.0))
+                .rounding(Rounding::same(8.0))
                 .stroke(Stroke::new(1.0, theme.border_strong))
                 .inner_margin(Margin::symmetric(10.0, 5.0))
                 .show(ui, |ui| {
@@ -610,7 +611,7 @@ pub fn render_skill_agent_studio(
                                         egui::RichText::new(format!("{} Hoàn tác", Lucide::UNDO))
                                             .color(Color32::BLACK)
                                             .strong()
-                                            .size(10.5),
+                                            .size(11.0),
                                     )
                                     .fill(theme.accent_pop)
                                     .rounding(Rounding::same(4.0)),
@@ -636,11 +637,11 @@ pub fn render_skill_agent_studio(
         }
 
         if let Some((msg, is_err, _)) = state.status_banner.clone() {
-            ui.add_space(5.0);
+            ui.add_space(8.0);
             let col = if is_err { theme.danger } else { theme.success };
             Frame::none()
                 .fill(Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 22))
-                .rounding(Rounding::same(6.0))
+                .rounding(Rounding::same(8.0))
                 .stroke(Stroke::new(1.0, col))
                 .inner_margin(Margin::symmetric(10.0, 5.0))
                 .show(ui, |ui| {
@@ -650,7 +651,7 @@ pub fn render_skill_agent_studio(
 
         // Unsaved changes guard prompt
         if let Some(pending) = state.pending_select_after_unsaved.clone() {
-            ui.add_space(5.0);
+            ui.add_space(8.0);
             Frame::none()
                 .fill(Color32::from_rgba_unmultiplied(
                     theme.warning.r(),
@@ -658,7 +659,7 @@ pub fn render_skill_agent_studio(
                     theme.warning.b(),
                     24,
                 ))
-                .rounding(Rounding::same(6.0))
+                .rounding(Rounding::same(8.0))
                 .stroke(Stroke::new(1.0, theme.warning))
                 .inner_margin(Margin::symmetric(10.0, 5.0))
                 .show(ui, |ui| {
@@ -677,7 +678,7 @@ pub fn render_skill_agent_studio(
                                     egui::Button::new(
                                         egui::RichText::new("Bỏ thay đổi")
                                             .color(Color32::WHITE)
-                                            .size(10.5),
+                                            .size(11.0),
                                     )
                                     .fill(theme.danger)
                                     .rounding(Rounding::same(4.0)),
@@ -694,7 +695,7 @@ pub fn render_skill_agent_studio(
                                     egui::Button::new(
                                         egui::RichText::new("Ở lại")
                                             .color(theme.text_paper)
-                                            .size(10.5),
+                                            .size(11.0),
                                     )
                                     .fill(theme.surface_2)
                                     .rounding(Rounding::same(4.0)),
@@ -821,7 +822,7 @@ fn render_left_pane(
             // Search Box
             Frame::none()
                 .fill(theme.bg_field)
-                .rounding(Rounding::same(6.0))
+                .rounding(Rounding::same(8.0))
                 .stroke(Stroke::new(1.0, theme.border_strong))
                 .inner_margin(Margin::symmetric(7.0, 4.0))
                 .show(ui, |ui| {
@@ -844,7 +845,7 @@ fn render_left_pane(
                     });
                 });
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
             // Scope Filter
             ui.horizontal(|ui| {
@@ -863,7 +864,7 @@ fn render_left_pane(
                                     } else {
                                         theme.text_silver
                                     })
-                                    .size(10.0),
+                                    .size(11.0),
                             )
                             .fill(if sel {
                                 theme.surface_3
@@ -879,9 +880,9 @@ fn render_left_pane(
                 }
             });
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.separator();
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
             let q = state.search_query.trim().to_lowercase();
 
@@ -922,10 +923,10 @@ fn render_left_pane(
                                                 Lucide::DOWNLOAD
                                             ))
                                             .color(theme.text_paper)
-                                            .size(10.5),
+                                            .size(11.0),
                                         )
                                         .fill(theme.surface_2)
-                                        .rounding(Rounding::same(5.0)),
+                                        .rounding(Rounding::same(8.0)),
                                     )
                                     .clicked()
                                 {
@@ -951,9 +952,9 @@ fn render_left_pane(
                                 ))
                                 .color(theme.text_silver)
                                 .strong()
-                                .size(9.5),
+                                .size(11.0),
                             );
-                            ui.add_space(3.0);
+                            ui.add_space(4.0);
 
                             for sk in group_items {
                                 let is_sel = matches!(
@@ -966,7 +967,7 @@ fn render_left_pane(
                                     } else {
                                         Color32::TRANSPARENT
                                     })
-                                    .rounding(Rounding::same(6.0))
+                                    .rounding(Rounding::same(8.0))
                                     .stroke(Stroke::new(
                                         1.0,
                                         if is_sel {
@@ -1013,7 +1014,7 @@ fn render_left_pane(
                                                     if sk.source.is_some() {
                                                         Frame::none()
                                                             .fill(theme.surface_2)
-                                                            .rounding(Rounding::same(3.0))
+                                                            .rounding(Rounding::same(4.0))
                                                             .inner_margin(Margin::symmetric(
                                                                 4.0, 0.5,
                                                             ))
@@ -1022,7 +1023,7 @@ fn render_left_pane(
                                                                     egui::RichText::new("GH")
                                                                         .color(theme.info)
                                                                         .strong()
-                                                                        .size(8.8),
+                                                                        .size(11.0),
                                                                 );
                                                             });
                                                     }
@@ -1030,7 +1031,7 @@ fn render_left_pane(
                                                         ui.label(
                                                             egui::RichText::new(Lucide::CODE)
                                                                 .color(theme.warning)
-                                                                .size(9.5),
+                                                                .size(11.0),
                                                         );
                                                     }
                                                 },
@@ -1041,7 +1042,7 @@ fn render_left_pane(
                                         ui.label(
                                             egui::RichText::new(short_desc)
                                                 .color(theme.text_silver)
-                                                .size(9.8),
+                                                .size(11.0),
                                         );
                                     });
                                 if resp.response.interact(Sense::click()).clicked() {
@@ -1052,9 +1053,9 @@ fn render_left_pane(
                                         agents,
                                     );
                                 }
-                                ui.add_space(3.0);
+                                ui.add_space(4.0);
                             }
-                            ui.add_space(6.0);
+                            ui.add_space(8.0);
                         }
                     }
                     StudioMainTab::Agents => {
@@ -1063,9 +1064,9 @@ fn render_left_pane(
                             egui::RichText::new(format!("CORE AGENTS ({})", ALL_AGENTS.len()))
                                 .color(theme.text_silver)
                                 .strong()
-                                .size(9.5),
+                                .size(11.0),
                         );
-                        ui.add_space(3.0);
+                        ui.add_space(4.0);
                         for &ag in ALL_AGENTS {
                             if !q.is_empty()
                                 && !ag.name().to_lowercase().contains(&q)
@@ -1080,7 +1081,7 @@ fn render_left_pane(
                                 } else {
                                     Color32::TRANSPARENT
                                 })
-                                .rounding(Rounding::same(6.0))
+                                .rounding(Rounding::same(8.0))
                                 .stroke(Stroke::new(
                                     1.0,
                                     if is_sel {
@@ -1110,7 +1111,7 @@ fn render_left_pane(
                                             ui.label(
                                                 egui::RichText::new(ag.title())
                                                     .color(theme.text_silver)
-                                                    .size(9.6),
+                                                    .size(11.0),
                                             );
                                         });
                                     });
@@ -1123,7 +1124,7 @@ fn render_left_pane(
                                     agents,
                                 );
                             }
-                            ui.add_space(3.0);
+                            ui.add_space(4.0);
                         }
 
                         ui.add_space(8.0);
@@ -1150,9 +1151,9 @@ fn render_left_pane(
                             ))
                             .color(theme.text_silver)
                             .strong()
-                            .size(9.5),
+                            .size(11.0),
                         );
-                        ui.add_space(3.0);
+                        ui.add_space(4.0);
 
                         for cag in filtered_custom {
                             let is_sel = matches!(
@@ -1165,7 +1166,7 @@ fn render_left_pane(
                                 } else {
                                     Color32::TRANSPARENT
                                 })
-                                .rounding(Rounding::same(6.0))
+                                .rounding(Rounding::same(8.0))
                                 .stroke(Stroke::new(
                                     1.0,
                                     if is_sel {
@@ -1195,7 +1196,7 @@ fn render_left_pane(
                                             ui.label(
                                                 egui::RichText::new(&cag.role)
                                                     .color(theme.text_silver)
-                                                    .size(9.6),
+                                                    .size(11.0),
                                             );
                                         });
                                     });
@@ -1208,7 +1209,7 @@ fn render_left_pane(
                                     agents,
                                 );
                             }
-                            ui.add_space(3.0);
+                            ui.add_space(4.0);
                         }
                     }
                 });
@@ -1316,7 +1317,7 @@ fn render_skill_detail(
                 ui.label(
                     egui::RichText::new(sk.scope.label())
                         .color(theme.text_silver)
-                        .size(10.0),
+                        .size(11.0),
                 );
             });
         if sk.has_scripts {
@@ -1333,7 +1334,7 @@ fn render_skill_detail(
                     ui.label(
                         egui::RichText::new(format!("{} Có scripts", Lucide::SHIELD_ALERT))
                             .color(theme.warning)
-                            .size(10.0),
+                            .size(11.0),
                     );
                 });
         }
@@ -1359,7 +1360,7 @@ fn render_skill_detail(
         });
     });
 
-    ui.add_space(3.0);
+    ui.add_space(4.0);
     ui.label(
         egui::RichText::new(&sk.description)
             .color(theme.text_silver)
@@ -1368,7 +1369,7 @@ fn render_skill_detail(
 
     if let Some(ref src) = sk.source {
         let short_sha = &src.commit_sha[..7.min(src.commit_sha.len())];
-        ui.add_space(3.0);
+        ui.add_space(4.0);
         ui.label(
             egui::RichText::new(format!(
                 "{} Nguồn: {} ({}@{}) · cài lúc {}",
@@ -1379,7 +1380,7 @@ fn render_skill_detail(
                 src.installed_at
             ))
             .color(theme.info)
-            .size(10.2),
+            .size(11.0),
         );
     }
 
@@ -1420,7 +1421,7 @@ fn render_skill_detail(
                     } else {
                         Color32::TRANSPARENT
                     })
-                    .rounding(Rounding::same(5.0)),
+                    .rounding(Rounding::same(8.0)),
                 )
                 .clicked()
             {
@@ -1431,7 +1432,7 @@ fn render_skill_detail(
 
     ui.add_space(4.0);
     ui.separator();
-    ui.add_space(6.0);
+    ui.add_space(8.0);
 
     // Body area
     let body_h = (ui.available_height() - 48.0).max(150.0);
@@ -1470,7 +1471,7 @@ fn render_skill_detail(
                 theme.danger.b(),
                 26,
             ))
-            .rounding(Rounding::same(6.0))
+            .rounding(Rounding::same(8.0))
             .stroke(Stroke::new(1.0, theme.danger))
             .inner_margin(Margin::symmetric(8.0, 5.0))
             .show(ui, |ui| {
@@ -1483,7 +1484,7 @@ fn render_skill_detail(
                             sk.path.to_string_lossy()
                         ))
                         .color(theme.danger)
-                        .size(10.5),
+                        .size(11.0),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui
@@ -1492,7 +1493,7 @@ fn render_skill_detail(
                                     egui::RichText::new("Xác nhận xóa")
                                         .color(Color32::WHITE)
                                         .strong()
-                                        .size(10.5),
+                                        .size(11.0),
                                 )
                                 .fill(theme.danger)
                                 .rounding(Rounding::same(4.0)),
@@ -1514,7 +1515,7 @@ fn render_skill_detail(
                                 egui::Button::new(
                                     egui::RichText::new("Hủy")
                                         .color(theme.text_silver)
-                                        .size(10.5),
+                                        .size(11.0),
                                 )
                                 .fill(Color32::TRANSPARENT),
                             )
@@ -1528,9 +1529,9 @@ fn render_skill_detail(
     }
 
     // Bottom Footer Bar
-    ui.add_space(6.0);
+    ui.add_space(8.0);
     ui.separator();
-    ui.add_space(6.0);
+    ui.add_space(8.0);
     ui.horizontal(|ui| {
         if let Some(ref src) = sk.source {
             let btn_lbl = if state.is_updating_source {
@@ -1544,10 +1545,10 @@ fn render_skill_detail(
                     egui::Button::new(
                         egui::RichText::new(btn_lbl)
                             .color(theme.info)
-                            .size(10.8),
+                            .size(11.0),
                     )
                     .fill(theme.surface_2)
-                    .rounding(Rounding::same(5.0)),
+                    .rounding(Rounding::same(8.0)),
                 )
                 .clicked()
             {
@@ -1566,10 +1567,10 @@ fn render_skill_detail(
                     egui::RichText::new(format!("{} Dùng trong Chat", Lucide::SPARKLES))
                         .color(Color32::BLACK)
                         .strong()
-                        .size(10.8),
+                        .size(11.0),
                 )
                 .fill(theme.accent_pop)
-                .rounding(Rounding::same(5.0)),
+                .rounding(Rounding::same(8.0)),
             )
             .clicked()
         {
@@ -1582,7 +1583,7 @@ fn render_skill_detail(
                     egui::Button::new(
                         egui::RichText::new(format!("{} Xóa", Lucide::TRASH))
                             .color(theme.danger)
-                            .size(10.8),
+                            .size(11.0),
                     )
                     .fill(Color32::TRANSPARENT),
                 )
@@ -1614,7 +1615,7 @@ fn render_skill_editor_form(
                 .strong()
                 .size(13.0),
         );
-        ui.add_space(6.0);
+        ui.add_space(8.0);
     }
 
     // Scope selector
@@ -1622,7 +1623,7 @@ fn render_skill_editor_form(
         ui.label(
             egui::RichText::new("Phạm vi lưu:")
                 .color(theme.text_silver)
-                .size(10.8),
+                .size(11.0),
         );
         for sc in [SkillScope::Project, SkillScope::Global] {
             if ui
@@ -1640,11 +1641,11 @@ fn render_skill_editor_form(
             egui::RichText::new(target_hint)
                 .color(theme.text_silver)
                 .monospace()
-                .size(9.8),
+                .size(11.0),
         );
     });
 
-    ui.add_space(6.0);
+    ui.add_space(8.0);
 
     // Name + Realtime Slug & Collision Validation
     let slug = SkillDiscovery::sanitize_skill_slug(&draft.name);
@@ -1659,7 +1660,7 @@ fn render_skill_editor_form(
         ui.label(
             egui::RichText::new("Tên Skill:")
                 .color(theme.text_silver)
-                .size(10.8),
+                .size(11.0),
         );
         if ui
             .add(
@@ -1676,7 +1677,7 @@ fn render_skill_editor_form(
                 egui::RichText::new(format!("→ slug: {}", slug))
                     .color(theme.text_silver)
                     .monospace()
-                    .size(10.0),
+                    .size(11.0),
             );
         }
     });
@@ -1685,7 +1686,7 @@ fn render_skill_editor_form(
         ui.label(
             egui::RichText::new("Tên skill không được để trống (dùng chữ cái, số, dấu gạch ngang).")
                 .color(theme.danger)
-                .size(10.0),
+                .size(11.0),
         );
     } else if collision {
         ui.horizontal(|ui| {
@@ -1697,26 +1698,26 @@ fn render_skill_editor_form(
                     draft.scope.label()
                 ))
                 .color(theme.warning)
-                .size(10.2),
+                .size(11.0),
             );
             ui.checkbox(&mut draft.allow_overwrite, "Cho phép ghi đè");
         });
     }
 
-    ui.add_space(6.0);
+    ui.add_space(8.0);
 
     // Description with char counter
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("Mô tả ngắn (khi nào dùng skill):")
                 .color(theme.text_silver)
-                .size(10.8),
+                .size(11.0),
         );
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.label(
                 egui::RichText::new(format!("{} ký tự", draft.description.chars().count()))
                     .color(theme.text_silver)
-                    .size(9.8),
+                    .size(11.0),
             );
         });
     });
@@ -1731,13 +1732,13 @@ fn render_skill_editor_form(
         draft.dirty = true;
     }
 
-    ui.add_space(6.0);
+    ui.add_space(8.0);
     ui.label(
         egui::RichText::new("Nội dung Markdown (phần thân SKILL.md — frontmatter tự sinh):")
             .color(theme.text_silver)
-            .size(10.8),
+            .size(11.0),
     );
-    ui.add_space(3.0);
+    ui.add_space(4.0);
 
     let editor_h = (ui.available_height() - 42.0).max(120.0);
     ScrollArea::vertical()
@@ -1766,10 +1767,10 @@ fn render_skill_editor_form(
                 egui::Button::new(
                     egui::RichText::new("Hủy thay đổi")
                         .color(theme.text_silver)
-                        .size(10.8),
+                        .size(11.0),
                 )
                 .fill(theme.surface_2)
-                .rounding(Rounding::same(5.0)),
+                .rounding(Rounding::same(8.0)),
             )
             .clicked()
         {
@@ -1793,7 +1794,7 @@ fn render_skill_editor_form(
                             .size(11.0),
                     )
                     .fill(theme.accent_pop)
-                    .rounding(Rounding::same(5.0)),
+                    .rounding(Rounding::same(8.0)),
                 )
                 .clicked()
             {
@@ -1838,7 +1839,7 @@ fn render_skill_files_tab(
             ui.label(
                 egui::RichText::new(format!("Thư mục: {}", sk.path.to_string_lossy()))
                     .color(theme.text_silver)
-                    .size(9.8),
+                    .size(11.0),
             );
             ui.add_space(4.0);
             ScrollArea::vertical()
@@ -1865,7 +1866,7 @@ fn render_skill_files_tab(
                                     } else {
                                         theme.text_paper
                                     })
-                                    .size(10.8),
+                                    .size(11.0),
                             )
                             .clicked()
                         {
@@ -1888,7 +1889,7 @@ fn render_skill_files_tab(
                 ui.add_space(4.0);
                 Frame::none()
                     .fill(theme.bg_field)
-                    .rounding(Rounding::same(6.0))
+                    .rounding(Rounding::same(8.0))
                     .inner_margin(Margin::same(8.0))
                     .show(ui, |ui| {
                         ScrollArea::vertical()
@@ -1898,7 +1899,7 @@ fn render_skill_files_tab(
                                     egui::RichText::new(&state.selected_file_content)
                                         .color(theme.text_paper)
                                         .monospace()
-                                        .size(10.2),
+                                        .size(11.0),
                                 );
                             });
                     });
@@ -1948,7 +1949,7 @@ fn render_core_agent_detail(
                         ui.label(
                             egui::RichText::new(format!("{} Core (chỉ đọc)", Lucide::LOCK))
                                 .color(theme.text_silver)
-                                .size(9.8),
+                                .size(11.0),
                         );
                     });
             });
@@ -1961,14 +1962,14 @@ fn render_core_agent_detail(
                 egui::RichText::new(format!("Tier: {}", ag.ponytail_tier()))
                     .color(theme.text_silver)
                     .monospace()
-                    .size(10.2),
+                    .size(11.0),
             );
         });
     });
 
     ui.add_space(12.0);
     ui.separator();
-    ui.add_space(10.0);
+    ui.add_space(12.0);
 
     ui.label(
         egui::RichText::new(
@@ -1978,7 +1979,7 @@ fn render_core_agent_detail(
         .size(11.5),
     );
 
-    ui.add_space(14.0);
+    ui.add_space(16.0);
     ui.horizontal(|ui| {
         if ui
             .add(
@@ -1992,7 +1993,7 @@ fn render_core_agent_detail(
                     .size(11.0),
                 )
                 .fill(theme.accent_pop)
-                .rounding(Rounding::same(5.0)),
+                .rounding(Rounding::same(8.0)),
             )
             .clicked()
         {
@@ -2011,16 +2012,18 @@ fn render_core_agent_detail(
         if ui
             .add(
                 egui::Button::new(
-                    egui::RichText::new(format!("{} Triệu hồi trong Chat", Lucide::SPARKLES))
+                    egui::RichText::new(format!("{} Chat 1-1 chuyên biệt", Lucide::MESSAGE_SQUARE))
                         .color(theme.text_paper)
                         .size(11.0),
                 )
                 .fill(theme.surface_2)
-                .rounding(Rounding::same(5.0)),
+                .rounding(Rounding::same(8.0)),
             )
             .clicked()
         {
-            action = Some(SkillStudioAction::InsertIntoChat(format!("@{} ", ag.name())));
+            action = Some(SkillStudioAction::OpenDedicatedAgentChat(
+                ag.name().to_string(),
+            ));
         }
     });
 
@@ -2065,7 +2068,7 @@ fn render_custom_agent_detail(
                         ui.label(
                             egui::RichText::new(ag.scope.label())
                                 .color(theme.text_silver)
-                                .size(9.8),
+                                .size(11.0),
                         );
                     });
             });
@@ -2077,7 +2080,7 @@ fn render_custom_agent_detail(
         });
     });
 
-    ui.add_space(6.0);
+    ui.add_space(8.0);
     ui.horizontal(|ui| {
         for (t, icon, lbl) in [
             (SkillDetailTab::Preview, Lucide::EYE, "Xem"),
@@ -2101,7 +2104,7 @@ fn render_custom_agent_detail(
                     } else {
                         Color32::TRANSPARENT
                     })
-                    .rounding(Rounding::same(5.0)),
+                    .rounding(Rounding::same(8.0)),
                 )
                 .clicked()
             {
@@ -2112,7 +2115,7 @@ fn render_custom_agent_detail(
 
     ui.add_space(4.0);
     ui.separator();
-    ui.add_space(6.0);
+    ui.add_space(8.0);
 
     let body_h = (ui.available_height() - 48.0).max(150.0);
     ui.allocate_ui_with_layout(
@@ -2124,7 +2127,7 @@ fn render_custom_agent_detail(
                     ui.label(
                         egui::RichText::new(format!("Model ưu tiên: {}", m))
                             .color(theme.info)
-                            .size(10.8),
+                            .size(11.0),
                     );
                     ui.add_space(4.0);
                 }
@@ -2133,7 +2136,7 @@ fn render_custom_agent_detail(
                         ui.label(
                             egui::RichText::new("Skills mặc định:")
                                 .color(theme.text_silver)
-                                .size(10.5),
+                                .size(11.0),
                         );
                         for s in &ag.default_skills {
                             Frame::none()
@@ -2144,12 +2147,12 @@ fn render_custom_agent_detail(
                                     ui.label(
                                         egui::RichText::new(format!("${}", s))
                                             .color(theme.accent_pop)
-                                            .size(10.0),
+                                            .size(11.0),
                                     );
                                 });
                         }
                     });
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                 }
                 render_markdown_preview(ui, theme, &ag.body);
             }
@@ -2179,7 +2182,7 @@ fn render_custom_agent_detail(
                 theme.danger.b(),
                 26,
             ))
-            .rounding(Rounding::same(6.0))
+            .rounding(Rounding::same(8.0))
             .stroke(Stroke::new(1.0, theme.danger))
             .inner_margin(Margin::symmetric(8.0, 5.0))
             .show(ui, |ui| {
@@ -2187,7 +2190,7 @@ fn render_custom_agent_detail(
                     ui.label(
                         egui::RichText::new(format!("Chuyển agent '@{}' vào thùng rác?", ag.name))
                             .color(theme.danger)
-                            .size(10.5),
+                            .size(11.0),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui
@@ -2196,7 +2199,7 @@ fn render_custom_agent_detail(
                                     egui::RichText::new("Xác nhận xóa")
                                         .color(Color32::WHITE)
                                         .strong()
-                                        .size(10.5),
+                                        .size(11.0),
                                 )
                                 .fill(theme.danger)
                                 .rounding(Rounding::same(4.0)),
@@ -2222,20 +2225,35 @@ fn render_custom_agent_detail(
             });
     }
 
-    ui.add_space(6.0);
+    ui.add_space(8.0);
     ui.separator();
-    ui.add_space(6.0);
+    ui.add_space(8.0);
     ui.horizontal(|ui| {
         if ui
             .add(
                 egui::Button::new(
-                    egui::RichText::new(format!("{} Triệu hồi trong Chat", Lucide::SPARKLES))
+                    egui::RichText::new(format!("{} Chat 1-1 với @{}", Lucide::MESSAGE_SQUARE, ag.name))
                         .color(Color32::BLACK)
                         .strong()
-                        .size(10.8),
+                        .size(11.0),
                 )
                 .fill(theme.accent_pop)
-                .rounding(Rounding::same(5.0)),
+                .rounding(Rounding::same(8.0)),
+            )
+            .clicked()
+        {
+            action = Some(SkillStudioAction::OpenDedicatedAgentChat(ag.name.clone()));
+        }
+
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new(format!("{} Chèn vào Chat", Lucide::SPARKLES))
+                        .color(theme.text_paper)
+                        .size(11.0),
+                )
+                .fill(theme.surface_2)
+                .rounding(Rounding::same(8.0)),
             )
             .clicked()
         {
@@ -2248,7 +2266,7 @@ fn render_custom_agent_detail(
                     egui::Button::new(
                         egui::RichText::new(format!("{} Xóa", Lucide::TRASH))
                             .color(theme.danger)
-                            .size(10.8),
+                            .size(11.0),
                     )
                     .fill(Color32::TRANSPARENT),
                 )
@@ -2283,7 +2301,7 @@ fn render_agent_editor_form(
                 .strong()
                 .size(13.0),
         );
-        ui.add_space(6.0);
+        ui.add_space(8.0);
     }
 
     let slug = SkillDiscovery::sanitize_agent_slug(&draft.name);
@@ -2342,13 +2360,13 @@ fn render_agent_editor_form(
                             slug
                         ))
                         .color(theme.warning)
-                        .size(10.2),
+                        .size(11.0),
                     );
                     ui.checkbox(&mut draft.allow_overwrite, "Cho phép ghi đè");
                 });
             }
 
-            ui.add_space(5.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.label("Vai trò (Role):");
                 if ui
@@ -2363,11 +2381,11 @@ fn render_agent_editor_form(
                 }
             });
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.label(
                 egui::RichText::new("Avatar Notionists:")
                     .color(theme.text_silver)
-                    .size(10.5),
+                    .size(11.0),
             );
             ui.horizontal_wrapped(|ui| {
                 for &ag in ALL_AGENTS {
@@ -2378,7 +2396,7 @@ fn render_agent_editor_form(
                         } else {
                             theme.surface_2
                         })
-                        .rounding(Rounding::same(6.0))
+                        .rounding(Rounding::same(8.0))
                         .stroke(Stroke::new(
                             1.0,
                             if sel { theme.accent_pop } else { theme.border },
@@ -2405,12 +2423,12 @@ fn render_agent_editor_form(
                 }
             });
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new("Skills mặc định:")
                         .color(theme.text_silver)
-                        .size(10.5),
+                        .size(11.0),
                 );
                 let mut rem = None;
                 for (i, s) in draft.default_skills.iter().enumerate() {
@@ -2423,7 +2441,7 @@ fn render_agent_editor_form(
                                 ui.label(
                                     egui::RichText::new(format!("${}", s))
                                         .color(theme.accent_pop)
-                                        .size(10.0),
+                                        .size(11.0),
                                 );
                                 if ui.small_button(Lucide::X).clicked() {
                                     rem = Some(i);
@@ -2448,11 +2466,11 @@ fn render_agent_editor_form(
                 });
             });
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.label(
                 egui::RichText::new("System Prompt:")
                     .color(theme.text_silver)
-                    .size(10.5),
+                    .size(11.0),
             );
             if ui
                 .add(
@@ -2476,10 +2494,10 @@ fn render_agent_editor_form(
                 egui::Button::new(
                     egui::RichText::new("Hủy")
                         .color(theme.text_silver)
-                        .size(10.8),
+                        .size(11.0),
                 )
                 .fill(theme.surface_2)
-                .rounding(Rounding::same(5.0)),
+                .rounding(Rounding::same(8.0)),
             )
             .clicked()
         {
@@ -2503,7 +2521,7 @@ fn render_agent_editor_form(
                             .size(11.0),
                     )
                     .fill(theme.accent_pop)
-                    .rounding(Rounding::same(5.0)),
+                    .rounding(Rounding::same(8.0)),
                 )
                 .clicked()
             {
@@ -2551,7 +2569,7 @@ fn render_markdown_preview(ui: &mut Ui, theme: &CanhTheme, md: &str) {
                     if in_code_block {
                         Frame::none()
                             .fill(theme.bg_field)
-                            .rounding(Rounding::same(6.0))
+                            .rounding(Rounding::same(8.0))
                             .stroke(Stroke::new(1.0, theme.border))
                             .inner_margin(Margin::same(8.0))
                             .show(ui, |ui| {
@@ -2559,7 +2577,7 @@ fn render_markdown_preview(ui: &mut Ui, theme: &CanhTheme, md: &str) {
                                     egui::RichText::new(code_buf.trim_end())
                                         .color(theme.text_paper)
                                         .monospace()
-                                        .size(10.5),
+                                        .size(11.0),
                                 );
                             });
                         ui.add_space(4.0);
@@ -2579,7 +2597,7 @@ fn render_markdown_preview(ui: &mut Ui, theme: &CanhTheme, md: &str) {
 
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
-                    ui.add_space(5.0);
+                    ui.add_space(8.0);
                 } else if let Some(h1) = trimmed.strip_prefix("# ") {
                     ui.label(
                         egui::RichText::new(h1)
@@ -2587,7 +2605,7 @@ fn render_markdown_preview(ui: &mut Ui, theme: &CanhTheme, md: &str) {
                             .strong()
                             .size(14.5),
                     );
-                    ui.add_space(3.0);
+                    ui.add_space(4.0);
                 } else if let Some(h2) = trimmed.strip_prefix("## ") {
                     ui.add_space(4.0);
                     ui.label(
@@ -2597,7 +2615,7 @@ fn render_markdown_preview(ui: &mut Ui, theme: &CanhTheme, md: &str) {
                             .size(12.5),
                     );
                 } else if let Some(h3) = trimmed.strip_prefix("### ") {
-                    ui.add_space(3.0);
+                    ui.add_space(4.0);
                     ui.label(
                         egui::RichText::new(h3)
                             .color(theme.text_paper)
@@ -2629,14 +2647,14 @@ fn render_markdown_preview(ui: &mut Ui, theme: &CanhTheme, md: &str) {
             if in_code_block && !code_buf.is_empty() {
                 Frame::none()
                     .fill(theme.bg_field)
-                    .rounding(Rounding::same(6.0))
+                    .rounding(Rounding::same(8.0))
                     .inner_margin(Margin::same(8.0))
                     .show(ui, |ui| {
                         ui.label(
                             egui::RichText::new(code_buf.trim_end())
                                 .color(theme.text_paper)
                                 .monospace()
-                                .size(10.5),
+                                .size(11.0),
                         );
                     });
             }
@@ -2661,7 +2679,7 @@ fn render_github_wizard_modal(
         .frame(
             Frame::none()
                 .fill(theme.panel_bg)
-                .rounding(Rounding::same(10.0))
+                .rounding(Rounding::same(12.0))
                 .stroke(Stroke::new(1.0, theme.border_strong))
                 .inner_margin(Margin::same(14.0)),
         )
@@ -2688,21 +2706,21 @@ fn render_github_wizard_modal(
                         } else {
                             theme.surface_2
                         })
-                        .rounding(Rounding::same(10.0))
+                        .rounding(Rounding::same(12.0))
                         .inner_margin(Margin::symmetric(7.0, 2.0))
                         .show(ui, |ui| {
                             ui.label(
                                 egui::RichText::new(format!("{}. {}", num, lbl))
                                     .color(col)
                                     .strong()
-                                    .size(10.5),
+                                    .size(11.0),
                             );
                         });
                     if step != WizardStep::Install {
                         ui.label(
                             egui::RichText::new(Lucide::CHEVRON_RIGHT)
                                 .color(theme.text_silver)
-                                .size(10.0),
+                                .size(11.0),
                         );
                     }
                 }
@@ -2721,11 +2739,11 @@ fn render_github_wizard_modal(
                         theme.danger.b(),
                         26,
                     ))
-                    .rounding(Rounding::same(6.0))
+                    .rounding(Rounding::same(8.0))
                     .stroke(Stroke::new(1.0, theme.danger))
                     .inner_margin(Margin::same(8.0))
                     .show(ui, |ui| {
-                        ui.label(egui::RichText::new(err).color(theme.danger).size(10.8));
+                        ui.label(egui::RichText::new(err).color(theme.danger).size(11.0));
                     });
                 ui.add_space(8.0);
             }
@@ -2743,7 +2761,7 @@ fn render_github_wizard_modal(
                         .desired_height(6.0)
                         .fill(theme.accent_pop),
                 );
-                ui.add_space(10.0);
+                ui.add_space(12.0);
             }
 
             match state.wizard.step {
@@ -2754,25 +2772,25 @@ fn render_github_wizard_modal(
                             .strong()
                             .size(11.2),
                     );
-                    ui.add_space(3.0);
+                    ui.add_space(4.0);
                     ui.add(
                         egui::TextEdit::singleline(&mut state.wizard.repo_url)
                             .desired_width(ui.available_width())
                             .hint_text("https://github.com/anthropics/skills hoặc owner/repo"),
                     );
-                    ui.add_space(3.0);
+                    ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
                             egui::RichText::new("Hỗ trợ: owner/repo · URL /tree/<branch>/<subpath> ·")
                                 .color(theme.text_silver)
-                                .size(9.8),
+                                .size(11.0),
                         );
                         if ui
                             .add(
                                 egui::Button::new(
                                     egui::RichText::new("Thử anthropics/skills")
                                         .color(theme.info)
-                                        .size(9.8),
+                                        .size(11.0),
                                 )
                                 .fill(Color32::TRANSPARENT),
                             )
@@ -2787,7 +2805,7 @@ fn render_github_wizard_modal(
                         ui.label(
                             egui::RichText::new("Nhánh / Tag (tùy chọn):")
                                 .color(theme.text_silver)
-                                .size(10.8),
+                                .size(11.0),
                         );
                         ui.add(
                             egui::TextEdit::singleline(&mut state.wizard.branch_override)
@@ -2798,7 +2816,7 @@ fn render_github_wizard_modal(
                     });
 
                     if state.wizard.is_private {
-                        ui.add_space(6.0);
+                        ui.add_space(8.0);
                         let has_env = std::env::var("GITHUB_TOKEN")
                             .map(|v| !v.trim().is_empty())
                             .unwrap_or(false);
@@ -2806,7 +2824,7 @@ fn render_github_wizard_modal(
                             ui.label(
                                 egui::RichText::new("GitHub Token:")
                                     .color(theme.text_silver)
-                                    .size(10.5),
+                                    .size(11.0),
                             );
                             ui.add(
                                 egui::TextEdit::singleline(&mut state.wizard.token)
@@ -2844,7 +2862,7 @@ fn render_github_wizard_modal(
                                         .size(11.0),
                                     )
                                     .fill(theme.accent_pop)
-                                    .rounding(Rounding::same(5.0)),
+                                    .rounding(Rounding::same(8.0)),
                                 )
                                 .clicked()
                             {
@@ -2888,7 +2906,7 @@ fn render_github_wizard_modal(
                             );
                         });
 
-                        ui.add_space(6.0);
+                        ui.add_space(8.0);
                         ui.horizontal(|ui| {
                             let all_selected = scan.candidates.iter().all(|c| c.selected);
                             let mut sel_all = all_selected;
@@ -2906,7 +2924,7 @@ fn render_github_wizard_modal(
                             });
                         });
 
-                        ui.add_space(6.0);
+                        ui.add_space(8.0);
                         let fq = state.wizard.filter_query.trim().to_lowercase();
 
                         ScrollArea::vertical()
@@ -2923,7 +2941,7 @@ fn render_github_wizard_modal(
 
                                     Frame::none()
                                         .fill(theme.surface_2)
-                                        .rounding(Rounding::same(6.0))
+                                        .rounding(Rounding::same(8.0))
                                         .stroke(Stroke::new(
                                             1.0,
                                             if cand.selected {
@@ -2948,7 +2966,7 @@ fn render_github_wizard_modal(
                                                         cand.file_count
                                                     ))
                                                     .color(theme.text_silver)
-                                                    .size(9.8),
+                                                    .size(11.0),
                                                 );
                                                 if cand.has_scripts {
                                                     Frame::none()
@@ -2958,7 +2976,7 @@ fn render_github_wizard_modal(
                                                             theme.warning.b(),
                                                             28,
                                                         ))
-                                                        .rounding(Rounding::same(3.0))
+                                                        .rounding(Rounding::same(4.0))
                                                         .inner_margin(Margin::symmetric(4.0, 1.0))
                                                         .show(ui, |ui| {
                                                             ui.label(
@@ -2967,7 +2985,7 @@ fn render_github_wizard_modal(
                                                                     Lucide::SHIELD_ALERT
                                                                 ))
                                                                 .color(theme.warning)
-                                                                .size(9.4),
+                                                                .size(11.0),
                                                             );
                                                         });
                                                 }
@@ -2977,7 +2995,7 @@ fn render_github_wizard_modal(
                                                     ui.label(
                                                         egui::RichText::new("(đã có)")
                                                             .color(theme.warning)
-                                                            .size(9.8),
+                                                            .size(11.0),
                                                     );
                                                 }
 
@@ -3005,7 +3023,7 @@ fn render_github_wizard_modal(
                                             ui.label(
                                                 egui::RichText::new(&cand.description)
                                                     .color(theme.text_silver)
-                                                    .size(10.3),
+                                                    .size(11.0),
                                             );
 
                                             if state.wizard.preview_candidate_idx == Some(idx) {
@@ -3019,12 +3037,12 @@ fn render_github_wizard_modal(
                                                             egui::RichText::new(&cand.preview_md)
                                                                 .color(theme.text_paper)
                                                                 .monospace()
-                                                                .size(9.8),
+                                                                .size(11.0),
                                                         );
                                                     });
                                             }
                                         });
-                                    ui.add_space(5.0);
+                                    ui.add_space(8.0);
                                 }
                             });
 
@@ -3051,7 +3069,7 @@ fn render_github_wizard_modal(
                                             .size(11.0),
                                         )
                                         .fill(theme.accent_pop)
-                                        .rounding(Rounding::same(5.0)),
+                                        .rounding(Rounding::same(8.0)),
                                     )
                                     .clicked()
                                 {
@@ -3104,7 +3122,7 @@ fn render_github_wizard_modal(
                         ),
                     );
 
-                    ui.add_space(10.0);
+                    ui.add_space(12.0);
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new("Khi trùng tên skill:")
@@ -3137,7 +3155,7 @@ fn render_github_wizard_modal(
                                 conflict_count
                             ))
                             .color(theme.warning)
-                            .size(10.5),
+                            .size(11.0),
                         );
                     }
 
@@ -3150,7 +3168,7 @@ fn render_github_wizard_modal(
                                 theme.warning.b(),
                                 24,
                             ))
-                            .rounding(Rounding::same(6.0))
+                            .rounding(Rounding::same(8.0))
                             .stroke(Stroke::new(1.0, theme.warning))
                             .inner_margin(Margin::same(8.0))
                             .show(ui, |ui| {
@@ -3161,7 +3179,7 @@ fn render_github_wizard_modal(
                                         script_count
                                     ))
                                     .color(theme.warning)
-                                    .size(10.5),
+                                    .size(11.0),
                                 );
                             });
                     }
@@ -3194,7 +3212,7 @@ fn render_github_wizard_modal(
                                         .size(11.0),
                                     )
                                     .fill(theme.accent_pop)
-                                    .rounding(Rounding::same(5.0)),
+                                    .rounding(Rounding::same(8.0)),
                                 )
                                 .clicked()
                             {
@@ -3227,7 +3245,7 @@ fn render_github_wizard_modal(
                             .strong()
                             .size(13.0),
                         );
-                        ui.add_space(6.0);
+                        ui.add_space(8.0);
                         if !rep.installed.is_empty() {
                             ui.label(
                                 egui::RichText::new(format!(
@@ -3247,7 +3265,7 @@ fn render_github_wizard_modal(
                             ui.label(
                                 egui::RichText::new(format!("Đổi tên: {}", pairs.join(", ")))
                                     .color(theme.info)
-                                    .size(10.8),
+                                    .size(11.0),
                             );
                         }
                         if !rep.skipped.is_empty() {
@@ -3257,7 +3275,7 @@ fn render_github_wizard_modal(
                                     rep.skipped.join(", ")
                                 ))
                                 .color(theme.text_silver)
-                                .size(10.8),
+                                .size(11.0),
                             );
                         }
                     }
@@ -3274,7 +3292,7 @@ fn render_github_wizard_modal(
                                             .size(11.0),
                                     )
                                     .fill(theme.accent_pop)
-                                    .rounding(Rounding::same(5.0)),
+                                    .rounding(Rounding::same(8.0)),
                                 )
                                 .clicked()
                             {

@@ -346,10 +346,10 @@ pub fn render_agent_kanban_view(
         // Optional Undo Delete Toast Banner
         if let Some((deleted_card, ts)) = composer.undo_deleted.clone() {
             let remaining = (5.5 - ts.elapsed().as_secs_f32()).max(0.0);
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             Frame::none()
                 .fill(theme.surface_2)
-                .rounding(Rounding::same(6.0))
+                .rounding(Rounding::same(8.0))
                 .stroke(Stroke::new(1.0, theme.border_strong))
                 .inner_margin(Margin::symmetric(10.0, 6.0))
                 .show(ui, |ui| {
@@ -372,7 +372,7 @@ pub fn render_agent_kanban_view(
                                         egui::RichText::new(format!("{} Hoàn tác", Lucide::UNDO))
                                             .color(theme.text_on_accent())
                                             .strong()
-                                            .size(10.5),
+                                            .size(11.0),
                                     )
                                     .fill(theme.accent_pop)
                                     .rounding(Rounding::same(4.0)),
@@ -535,17 +535,17 @@ fn render_top_bar(
                                 egui::RichText::new(format!("{} đang chạy", running_count))
                                     .color(theme.accent_pop)
                                     .strong()
-                                    .size(10.5),
+                                    .size(11.0),
                             );
                         });
                 }
 
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
                 // Search Box
                 Frame::none()
                     .fill(theme.input_bg)
-                    .rounding(Rounding::same(6.0))
+                    .rounding(Rounding::same(8.0))
                     .stroke(Stroke::new(1.0, theme.border_strong))
                     .inner_margin(Margin::symmetric(8.0, 3.0))
                     .show(ui, |ui| {
@@ -568,7 +568,7 @@ fn render_top_bar(
                                         egui::Button::new(
                                             egui::RichText::new(Lucide::X)
                                                 .color(theme.text_silver)
-                                                .size(10.0),
+                                                .size(11.0),
                                         )
                                         .fill(Color32::TRANSPARENT),
                                     )
@@ -592,7 +592,7 @@ fn render_top_bar(
                         Lucide::CHEVRON_DOWN
                     ))
                     .color(theme.text_paper)
-                    .size(10.8),
+                    .size(11.0),
                     |ui| {
                         if ui
                             .selectable_label(composer.filter_agent.is_none(), "Tất cả Agent")
@@ -649,7 +649,7 @@ fn render_top_bar(
                     };
                     if ui
                         .add(
-                            egui::Button::new(egui::RichText::new(label).color(fg).size(10.5))
+                            egui::Button::new(egui::RichText::new(label).color(fg).size(11.0))
                                 .fill(fill)
                                 .stroke(Stroke::new(
                                     1.0,
@@ -659,7 +659,7 @@ fn render_top_bar(
                                         Color32::TRANSPARENT
                                     },
                                 ))
-                                .rounding(Rounding::same(5.0)),
+                                .rounding(Rounding::same(8.0)),
                         )
                         .clicked()
                     {
@@ -672,7 +672,7 @@ fn render_top_bar(
                     &mut kanban.auto_run_backlog_on_idle,
                     egui::RichText::new(format!("{} Tự chạy khi rảnh", Lucide::CLOCK))
                         .color(theme.text_silver)
-                        .size(10.5),
+                        .size(11.0),
                 )
                 .on_hover_text("Tự động chạy 1 task Backlog (có bật Tự chạy) khi IDE rảnh > 30s");
 
@@ -687,7 +687,7 @@ fn render_top_bar(
                                     .size(11.0),
                             )
                             .fill(theme.accent_pop)
-                            .rounding(Rounding::same(6.0)),
+                            .rounding(Rounding::same(8.0)),
                         )
                         .on_hover_text("Tạo task mới (⌘N)")
                         .clicked()
@@ -752,7 +752,7 @@ fn render_four_column_board(
 
                             let col_frame = Frame::none()
                                 .fill(theme.surface_1)
-                                .rounding(Rounding::same(10.0))
+                                .rounding(Rounding::same(12.0))
                                 .stroke(Stroke::new(
                                     if is_drag_hover { 1.8 } else { 1.0 },
                                     if is_drag_hover {
@@ -795,7 +795,7 @@ fn render_four_column_board(
                                                     ))
                                                     .color(theme.text_silver)
                                                     .strong()
-                                                    .size(10.0),
+                                                    .size(11.0),
                                                 );
                                             });
 
@@ -834,7 +834,7 @@ fn render_four_column_board(
                                                             egui::Button::new(
                                                                 egui::RichText::new(lbl)
                                                                     .color(theme.text_silver)
-                                                                    .size(10.0),
+                                                                    .size(11.0),
                                                             )
                                                             .fill(Color32::TRANSPARENT),
                                                         )
@@ -848,9 +848,9 @@ fn render_four_column_board(
                                         );
                                     });
 
-                                    ui.add_space(5.0);
+                                    ui.add_space(8.0);
                                     ui.separator();
-                                    ui.add_space(6.0);
+                                    ui.add_space(8.0);
 
                                     // Inline Quick Add box
                                     if composer.quick_add_col == Some(col_type) {
@@ -864,7 +864,7 @@ fn render_four_column_board(
                                         ) {
                                             action = Some(qa_act);
                                         }
-                                        ui.add_space(6.0);
+                                        ui.add_space(8.0);
                                     }
 
                                     // Card List inside Vertical ScrollArea
@@ -885,7 +885,7 @@ fn render_four_column_board(
                                             if col_tasks.is_empty() {
                                                 Frame::none()
                                                     .fill(Color32::TRANSPARENT)
-                                                    .rounding(Rounding::same(6.0))
+                                                    .rounding(Rounding::same(8.0))
                                                     .stroke(Stroke::new(1.0, theme.border))
                                                     .inner_margin(Margin::symmetric(8.0, 18.0))
                                                     .show(ui, |ui| {
@@ -896,7 +896,7 @@ fn render_four_column_board(
                                                                     "Chưa có thẻ — kéo thả hoặc bấm +",
                                                                 )
                                                                 .color(theme.text_silver)
-                                                                .size(10.5),
+                                                                .size(11.0),
                                                             );
                                                         });
                                                     });
@@ -913,7 +913,7 @@ fn render_four_column_board(
                                                     ) {
                                                         action = Some(act);
                                                     }
-                                                    ui.add_space(7.0);
+                                                    ui.add_space(8.0);
                                                 }
                                                 if col_type == KanbanColumn::Done
                                                     && !composer.done_show_all
@@ -926,10 +926,10 @@ fn render_four_column_board(
                                                                     total_in_col - 5
                                                                 ))
                                                                 .color(theme.text_silver)
-                                                                .size(10.5),
+                                                                .size(11.0),
                                                             )
                                                             .fill(theme.surface_2)
-                                                            .rounding(Rounding::same(5.0)),
+                                                            .rounding(Rounding::same(8.0)),
                                                         )
                                                         .clicked()
                                                 {
@@ -1051,7 +1051,7 @@ fn render_compact_board(
                             });
 
                             if !is_collapsed {
-                                ui.add_space(6.0);
+                                ui.add_space(8.0);
                                 if composer.quick_add_col == Some(col_type) {
                                     if let Some(qa) = render_inline_quick_add(
                                         ui,
@@ -1063,7 +1063,7 @@ fn render_compact_board(
                                     ) {
                                         action = Some(qa);
                                     }
-                                    ui.add_space(6.0);
+                                    ui.add_space(8.0);
                                 }
                                 for task in col_tasks {
                                     if let Some(act) = render_task_card(
@@ -1077,12 +1077,12 @@ fn render_compact_board(
                                     ) {
                                         action = Some(act);
                                     }
-                                    ui.add_space(6.0);
+                                    ui.add_space(8.0);
                                 }
                             }
                         });
                     });
-                ui.add_space(7.0);
+                ui.add_space(8.0);
             }
         });
 
@@ -1100,7 +1100,7 @@ fn render_inline_quick_add(
     let mut act = None;
     Frame::none()
         .fill(theme.surface_2)
-        .rounding(Rounding::same(6.0))
+        .rounding(Rounding::same(8.0))
         .stroke(Stroke::new(1.0, theme.accent_pop))
         .inner_margin(Margin::same(7.0))
         .show(ui, |ui| {
@@ -1114,7 +1114,7 @@ fn render_inline_quick_add(
                 );
                 resp.request_focus();
                 let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                ui.add_space(5.0);
+                ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     if (enter
                         || ui
@@ -1123,7 +1123,7 @@ fn render_inline_quick_add(
                                     egui::RichText::new("Thêm")
                                         .color(theme.text_on_accent())
                                         .strong()
-                                        .size(10.2),
+                                        .size(11.0),
                                 )
                                 .fill(theme.accent_pop)
                                 .rounding(Rounding::same(4.0)),
@@ -1151,7 +1151,7 @@ fn render_inline_quick_add(
                             egui::Button::new(
                                 egui::RichText::new("Hủy")
                                     .color(theme.text_silver)
-                                    .size(10.2),
+                                    .size(11.0),
                             )
                             .fill(Color32::TRANSPARENT),
                         )
@@ -1245,7 +1245,7 @@ fn render_task_card(
                             egui::RichText::new(&task.priority)
                                 .color(pcol)
                                 .strong()
-                                .size(9.8),
+                                .size(11.0),
                         );
                     });
 
@@ -1254,7 +1254,7 @@ fn render_task_card(
                         .color(theme.text_silver)
                         .monospace()
                         .strong()
-                        .size(10.0),
+                        .size(11.0),
                 );
 
                 if task.run_failed {
@@ -1265,14 +1265,14 @@ fn render_task_card(
                             theme.danger.b(),
                             38,
                         ))
-                        .rounding(Rounding::same(3.0))
+                        .rounding(Rounding::same(4.0))
                         .inner_margin(Margin::symmetric(4.0, 1.0))
                         .show(ui, |ui| {
                             ui.label(
                                 egui::RichText::new("Lỗi")
                                     .color(theme.danger)
                                     .strong()
-                                    .size(9.5),
+                                    .size(11.0),
                             );
                         });
                 } else if task.is_running_bg {
@@ -1297,7 +1297,7 @@ fn render_task_card(
                 });
             });
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
             // Row 2: Full-width Clickable Title (wraps normally across full card_inner_w!)
             let title_resp = ui.add_sized(
@@ -1317,7 +1317,7 @@ fn render_task_card(
 
             // Optional short description snippet
             if !task.description.trim().is_empty() {
-                ui.add_space(3.0);
+                ui.add_space(4.0);
                 let short_desc: String = task.description.chars().take(90).collect();
                 let desc_txt = if task.description.chars().count() > 90 {
                     format!("{}…", short_desc)
@@ -1329,7 +1329,7 @@ fn render_task_card(
                     egui::Label::new(
                         egui::RichText::new(desc_txt)
                             .color(theme.text_silver)
-                            .size(10.5),
+                            .size(11.0),
                     )
                     .wrap()
                     .sense(Sense::click()),
@@ -1340,14 +1340,14 @@ fn render_task_card(
             }
 
             // Row 3: Subtle metadata (Agent · Branch · Elapsed · Skills)
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new(format!("{} {}", task.assigned_agent.icon(), task.display_agent_name()))
                         .color(theme.text_silver)
-                        .size(10.0),
+                        .size(11.0),
                 );
-                ui.label(egui::RichText::new("·").color(theme.border_strong).size(10.0));
+                ui.label(egui::RichText::new("·").color(theme.border_strong).size(11.0));
                 ui.label(
                     egui::RichText::new(format!(
                         "{} {}",
@@ -1355,10 +1355,10 @@ fn render_task_card(
                         task.worktree_branch
                     ))
                     .color(theme.text_silver)
-                    .size(10.0),
+                    .size(11.0),
                 );
                 if task.time_spent_secs > 0 {
-                    ui.label(egui::RichText::new("·").color(theme.border_strong).size(10.0));
+                    ui.label(egui::RichText::new("·").color(theme.border_strong).size(11.0));
                     ui.label(
                         egui::RichText::new(format!(
                             "{} {}",
@@ -1366,19 +1366,19 @@ fn render_task_card(
                             format_duration(task.time_spent_secs)
                         ))
                         .color(theme.text_silver)
-                        .size(10.0),
+                        .size(11.0),
                     );
                 }
                 if !task.attached_skills.is_empty() {
                     Frame::none()
                         .fill(theme.surface_3)
-                        .rounding(Rounding::same(3.0))
+                        .rounding(Rounding::same(4.0))
                         .inner_margin(Margin::symmetric(4.0, 0.5))
                         .show(ui, |ui| {
                             ui.label(
                                 egui::RichText::new(format!("${}", task.attached_skills.len()))
                                     .color(theme.accent_pop)
-                                    .size(9.5),
+                                    .size(11.0),
                             );
                         });
                 }
@@ -1386,7 +1386,7 @@ fn render_task_card(
 
             // Running / Failed / Live Output snippet
             if task.is_running_bg || task.run_failed {
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 if task.is_running_bg {
                     let bar = egui::ProgressBar::new(task.progress_pct)
                         .desired_height(4.0)
@@ -1396,7 +1396,7 @@ fn render_task_card(
                 }
                 Frame::none()
                     .fill(theme.code_bg)
-                    .rounding(Rounding::same(5.0))
+                    .rounding(Rounding::same(8.0))
                     .inner_margin(Margin::symmetric(7.0, 5.0))
                     .show(ui, |ui| {
                         ui.set_width((card_inner_w - 14.0).max(140.0));
@@ -1409,14 +1409,14 @@ fn render_task_card(
                                     theme.accent_pop
                                 })
                                 .monospace()
-                                .size(9.8),
+                                .size(11.0),
                         );
                     });
             }
 
             // Inline Delete Confirmation Bar
             if composer.confirm_delete_card_id.as_deref() == Some(task.id.as_str()) {
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 Frame::none()
                     .fill(Color32::from_rgba_unmultiplied(
                         theme.danger.r(),
@@ -1424,7 +1424,7 @@ fn render_task_card(
                         theme.danger.b(),
                         28,
                     ))
-                    .rounding(Rounding::same(5.0))
+                    .rounding(Rounding::same(8.0))
                     .inner_margin(Margin::symmetric(6.0, 4.0))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
@@ -1432,7 +1432,7 @@ fn render_task_card(
                                 egui::RichText::new("Xóa thẻ này?")
                                     .color(theme.danger)
                                     .strong()
-                                    .size(10.2),
+                                    .size(11.0),
                             );
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if ui
@@ -1441,7 +1441,7 @@ fn render_task_card(
                                             egui::RichText::new("Xóa")
                                                 .color(Color32::WHITE)
                                                 .strong()
-                                                .size(10.0),
+                                                .size(11.0),
                                         )
                                         .fill(theme.danger)
                                         .rounding(Rounding::same(4.0)),
@@ -1456,7 +1456,7 @@ fn render_task_card(
                                         egui::Button::new(
                                             egui::RichText::new("Hủy")
                                                 .color(theme.text_silver)
-                                                .size(10.0),
+                                                .size(11.0),
                                         )
                                         .fill(Color32::TRANSPARENT),
                                     )
@@ -1469,7 +1469,7 @@ fn render_task_card(
                     });
             }
 
-            ui.add_space(7.0);
+            ui.add_space(8.0);
 
             // Row 4: Clean Primary Action + Overflow Menu `...`
             ui.horizontal(|ui| {
@@ -1480,10 +1480,10 @@ fn render_task_card(
                                 egui::RichText::new(format!("{} Dừng", Lucide::STOP))
                                     .color(Color32::WHITE)
                                     .strong()
-                                    .size(10.0),
+                                    .size(11.0),
                             )
                             .fill(theme.danger)
-                            .rounding(Rounding::same(5.0)),
+                            .rounding(Rounding::same(8.0)),
                         )
                         .clicked()
                     {
@@ -1496,10 +1496,10 @@ fn render_task_card(
                                 egui::RichText::new(format!("{} Chạy lại", Lucide::ROTATE_CCW))
                                     .color(theme.text_on_accent())
                                     .strong()
-                                    .size(10.0),
+                                    .size(11.0),
                             )
                             .fill(theme.accent_pop)
-                            .rounding(Rounding::same(5.0)),
+                            .rounding(Rounding::same(8.0)),
                         )
                         .clicked()
                     {
@@ -1512,10 +1512,10 @@ fn render_task_card(
                                 egui::RichText::new(format!("{} Duyệt", Lucide::CHECK))
                                     .color(Color32::WHITE)
                                     .strong()
-                                    .size(10.0),
+                                    .size(11.0),
                             )
                             .fill(theme.success)
-                            .rounding(Rounding::same(5.0)),
+                            .rounding(Rounding::same(8.0)),
                         )
                         .clicked()
                     {
@@ -1526,10 +1526,10 @@ fn render_task_card(
                             egui::Button::new(
                                 egui::RichText::new("Trả lại")
                                     .color(theme.text_paper)
-                                    .size(10.0),
+                                    .size(11.0),
                             )
                             .fill(theme.surface_3)
-                            .rounding(Rounding::same(5.0)),
+                            .rounding(Rounding::same(8.0)),
                         )
                         .clicked()
                     {
@@ -1545,10 +1545,10 @@ fn render_task_card(
                                 egui::RichText::new(format!("{} Chạy", Lucide::PLAY))
                                     .color(theme.text_on_accent())
                                     .strong()
-                                    .size(10.0),
+                                    .size(11.0),
                             )
                             .fill(theme.accent_pop)
-                            .rounding(Rounding::same(5.0)),
+                            .rounding(Rounding::same(8.0)),
                         )
                         .on_hover_text("Giao Agent chạy nền task này qua AGY")
                         .clicked()
@@ -1560,7 +1560,7 @@ fn render_task_card(
                         egui::RichText::new(format!("{} Hoàn tất", Lucide::CIRCLE_CHECK))
                             .color(theme.success)
                             .strong()
-                            .size(10.0),
+                            .size(11.0),
                     );
                 }
 
@@ -1740,7 +1740,7 @@ fn render_task_drawer(
 
     Frame::none()
         .fill(theme.surface_1)
-        .rounding(Rounding::same(10.0))
+        .rounding(Rounding::same(12.0))
         .stroke(Stroke::new(1.0, theme.border_strong))
         .inner_margin(Margin::same(12.0))
         .show(ui, |ui| {
@@ -1773,7 +1773,7 @@ fn render_task_drawer(
                     ui.label(
                         egui::RichText::new("● chưa lưu")
                             .color(theme.warning)
-                            .size(10.0),
+                            .size(11.0),
                     );
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -1798,10 +1798,10 @@ fn render_task_drawer(
                                     egui::RichText::new(format!("{} Lưu", Lucide::SAVE))
                                         .color(theme.text_on_accent())
                                         .strong()
-                                        .size(10.5),
+                                        .size(11.0),
                                 )
                                 .fill(theme.accent_pop)
-                                .rounding(Rounding::same(5.0)),
+                                .rounding(Rounding::same(8.0)),
                             )
                             .clicked()
                     {
@@ -1822,9 +1822,9 @@ fn render_task_drawer(
                 });
             });
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.separator();
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
             ScrollArea::vertical()
                 .id_salt("kanban_drawer_body_scroll")
@@ -1855,7 +1855,7 @@ fn render_task_drawer(
                             ui.label(
                                 egui::RichText::new("Trạng thái")
                                     .color(theme.text_silver)
-                                    .size(10.8),
+                                    .size(11.0),
                             );
                             ui.menu_button(
                                 format!("{} {}", draft.column.title(), Lucide::CHEVRON_DOWN),
@@ -1877,7 +1877,7 @@ fn render_task_drawer(
                             ui.label(
                                 egui::RichText::new("Ưu tiên")
                                     .color(theme.text_silver)
-                                    .size(10.8),
+                                    .size(11.0),
                             );
                             ui.horizontal(|ui| {
                                 for p in ["P0", "P1", "P2"] {
@@ -1893,7 +1893,7 @@ fn render_task_drawer(
                                                         pcol
                                                     })
                                                     .strong()
-                                                    .size(10.2),
+                                                    .size(11.0),
                                             )
                                             .fill(if is_p { pcol } else { theme.surface_2 })
                                             .rounding(Rounding::same(4.0)),
@@ -1911,7 +1911,7 @@ fn render_task_drawer(
                             ui.label(
                                 egui::RichText::new("Agent")
                                     .color(theme.text_silver)
-                                    .size(10.8),
+                                    .size(11.0),
                             );
                             let cur_ag = draft
                                 .custom_agent
@@ -1968,7 +1968,7 @@ fn render_task_drawer(
                             ui.label(
                                 egui::RichText::new("Branch")
                                     .color(theme.text_silver)
-                                    .size(10.8),
+                                    .size(11.0),
                             );
                             ui.menu_button(
                                 format!(
@@ -1999,7 +1999,7 @@ fn render_task_drawer(
                             ui.label(
                                 egui::RichText::new("Tự động")
                                     .color(theme.text_silver)
-                                    .size(10.8),
+                                    .size(11.0),
                             );
                             if ui
                                 .checkbox(&mut draft.auto_schedule_idle, "Chạy khi máy nhàn rỗi")
@@ -2017,7 +2017,7 @@ fn render_task_drawer(
                         ui.label(
                             egui::RichText::new("Skills:")
                                 .color(theme.text_silver)
-                                .size(10.8),
+                                .size(11.0),
                         );
                         let mut remove_idx = None;
                         for (idx, sk_name) in draft.attached_skills.iter().enumerate() {
@@ -2031,14 +2031,14 @@ fn render_task_drawer(
                                         ui.label(
                                             egui::RichText::new(format!("${}", sk_name))
                                                 .color(theme.accent_pop)
-                                                .size(10.2),
+                                                .size(11.0),
                                         );
                                         if ui
                                             .add(
                                                 egui::Button::new(
                                                     egui::RichText::new(Lucide::X)
                                                         .color(theme.text_silver)
-                                                        .size(9.0),
+                                                        .size(11.0),
                                                 )
                                                 .fill(Color32::TRANSPARENT),
                                             )
@@ -2057,7 +2057,7 @@ fn render_task_drawer(
                         ui.menu_button(
                             egui::RichText::new(format!("{} Gắn Skill", Lucide::PLUS))
                                 .color(theme.text_silver)
-                                .size(10.2),
+                                .size(11.0),
                             |ui| {
                                 let enabled_skills: Vec<&DiscoveredSkill> =
                                     skills.iter().filter(|s| s.enabled).collect();
@@ -2082,9 +2082,9 @@ fn render_task_drawer(
                         egui::RichText::new("Mô tả / Prompt cho Agent")
                             .color(theme.text_silver)
                             .strong()
-                            .size(10.8),
+                            .size(11.0),
                     );
-                    ui.add_space(3.0);
+                    ui.add_space(4.0);
                     if ui
                         .add(
                             egui::TextEdit::multiline(&mut draft.description)
@@ -2103,7 +2103,7 @@ fn render_task_drawer(
                         ui.add_space(8.0);
                         Frame::none()
                             .fill(theme.surface_2)
-                            .rounding(Rounding::same(6.0))
+                            .rounding(Rounding::same(8.0))
                             .stroke(Stroke::new(1.0, theme.info))
                             .inner_margin(Margin::same(8.0))
                             .show(ui, |ui| {
@@ -2111,7 +2111,7 @@ fn render_task_drawer(
                                     egui::RichText::new("Nghiệm thu kết quả")
                                         .color(theme.info)
                                         .strong()
-                                        .size(10.8),
+                                        .size(11.0),
                                 );
                                 ui.add_space(4.0);
                                 ui.add(
@@ -2119,7 +2119,7 @@ fn render_task_drawer(
                                         .desired_width(ui.available_width())
                                         .hint_text("Ghi chú nếu cần trả lại Backlog..."),
                                 );
-                                ui.add_space(5.0);
+                                ui.add_space(8.0);
                                 ui.horizontal(|ui| {
                                     if ui
                                         .add(
@@ -2130,10 +2130,10 @@ fn render_task_drawer(
                                                 ))
                                                 .color(Color32::WHITE)
                                                 .strong()
-                                                .size(10.5),
+                                                .size(11.0),
                                             )
                                             .fill(theme.success)
-                                            .rounding(Rounding::same(5.0)),
+                                            .rounding(Rounding::same(8.0)),
                                         )
                                         .clicked()
                                     {
@@ -2149,10 +2149,10 @@ fn render_task_drawer(
                                                     Lucide::ROTATE_CCW
                                                 ))
                                                 .color(theme.text_paper)
-                                                .size(10.5),
+                                                .size(11.0),
                                             )
                                             .fill(theme.surface_3)
-                                            .rounding(Rounding::same(5.0)),
+                                            .rounding(Rounding::same(8.0)),
                                         )
                                         .clicked()
                                     {
@@ -2167,7 +2167,7 @@ fn render_task_drawer(
                     }
 
                     // Full Background Execution Logs
-                    ui.add_space(10.0);
+                    ui.add_space(12.0);
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new(format!(
@@ -2182,7 +2182,7 @@ fn render_task_drawer(
                                 theme.text_silver
                             })
                             .strong()
-                            .size(10.8),
+                            .size(11.0),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if !logs.is_empty()
@@ -2191,7 +2191,7 @@ fn render_task_drawer(
                                         egui::Button::new(
                                             egui::RichText::new(format!("{} Copy", Lucide::COPY))
                                                 .color(theme.text_silver)
-                                                .size(10.0),
+                                                .size(11.0),
                                         )
                                         .fill(theme.surface_2)
                                         .rounding(Rounding::same(4.0)),
@@ -2206,7 +2206,7 @@ fn render_task_drawer(
                     ui.add_space(4.0);
                     Frame::none()
                         .fill(theme.code_bg)
-                        .rounding(Rounding::same(6.0))
+                        .rounding(Rounding::same(8.0))
                         .stroke(Stroke::new(1.0, theme.border))
                         .inner_margin(Margin::same(8.0))
                         .show(ui, |ui| {
@@ -2220,7 +2220,7 @@ fn render_task_drawer(
                                             egui::RichText::new(&live_output)
                                                 .color(theme.text_silver)
                                                 .monospace()
-                                                .size(10.2),
+                                                .size(11.0),
                                         );
                                     } else {
                                         for line in &logs {
@@ -2235,7 +2235,7 @@ fn render_task_drawer(
                                                 egui::RichText::new(line)
                                                     .color(lcol)
                                                     .monospace()
-                                                    .size(10.2),
+                                                    .size(11.0),
                                             );
                                         }
                                     }
@@ -2244,9 +2244,9 @@ fn render_task_drawer(
                 });
 
             // Drawer Footer Action Row
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.separator();
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if is_running {
                     if ui
@@ -2255,10 +2255,10 @@ fn render_task_drawer(
                                 egui::RichText::new(format!("{} Dừng", Lucide::STOP))
                                     .color(Color32::WHITE)
                                     .strong()
-                                    .size(10.5),
+                                    .size(11.0),
                             )
                             .fill(theme.danger)
-                            .rounding(Rounding::same(5.0)),
+                            .rounding(Rounding::same(8.0)),
                         )
                         .clicked()
                     {
@@ -2270,10 +2270,10 @@ fn render_task_drawer(
                             egui::RichText::new(format!("{} Chạy nền", Lucide::PLAY))
                                 .color(theme.text_on_accent())
                                 .strong()
-                                .size(10.5),
+                                .size(11.0),
                         )
                         .fill(theme.accent_pop)
-                        .rounding(Rounding::same(5.0)),
+                        .rounding(Rounding::same(8.0)),
                     )
                     .clicked()
                 {
@@ -2285,10 +2285,10 @@ fn render_task_drawer(
                         egui::Button::new(
                             egui::RichText::new(format!("{} Chat", Lucide::MESSAGE_SQUARE))
                                 .color(theme.text_paper)
-                                .size(10.5),
+                                .size(11.0),
                         )
                         .fill(theme.surface_2)
-                        .rounding(Rounding::same(5.0)),
+                        .rounding(Rounding::same(8.0)),
                     )
                     .clicked()
                 {
@@ -2308,7 +2308,7 @@ fn render_task_drawer(
                                     egui::RichText::new("Xác nhận xóa")
                                         .color(Color32::WHITE)
                                         .strong()
-                                        .size(10.2),
+                                        .size(11.0),
                                 )
                                 .fill(theme.danger)
                                 .rounding(Rounding::same(4.0)),
@@ -2323,7 +2323,7 @@ fn render_task_drawer(
                                 egui::Button::new(
                                     egui::RichText::new("Hủy")
                                         .color(theme.text_silver)
-                                        .size(10.2),
+                                        .size(11.0),
                                 )
                                 .fill(Color32::TRANSPARENT),
                             )
@@ -2383,7 +2383,7 @@ fn render_create_task_modal(
         .frame(
             Frame::none()
                 .fill(theme.panel_bg)
-                .rounding(Rounding::same(10.0))
+                .rounding(Rounding::same(12.0))
                 .stroke(Stroke::new(1.0, theme.border_strong))
                 .inner_margin(Margin::same(14.0)),
         )
@@ -2391,9 +2391,9 @@ fn render_create_task_modal(
             ui.label(
                 egui::RichText::new("Tiêu đề task")
                     .color(theme.text_silver)
-                    .size(10.8),
+                    .size(11.0),
             );
-            ui.add_space(3.0);
+            ui.add_space(4.0);
             ui.add(
                 egui::TextEdit::singleline(&mut composer.new_title)
                     .desired_width(ui.available_width())
@@ -2404,9 +2404,9 @@ fn render_create_task_modal(
             ui.label(
                 egui::RichText::new("Mô tả / Prompt chi tiết cho Agent")
                     .color(theme.text_silver)
-                    .size(10.8),
+                    .size(11.0),
             );
-            ui.add_space(3.0);
+            ui.add_space(4.0);
             ui.add(
                 egui::TextEdit::multiline(&mut composer.new_desc)
                     .desired_rows(4)
@@ -2423,7 +2423,7 @@ fn render_create_task_modal(
                     ui.label(
                         egui::RichText::new("Ưu tiên")
                             .color(theme.text_silver)
-                            .size(10.8),
+                            .size(11.0),
                     );
                     ui.horizontal(|ui| {
                         for p in ["P0", "P1", "P2"] {
@@ -2435,7 +2435,7 @@ fn render_create_task_modal(
                                         egui::RichText::new(p)
                                             .color(if is_p { Color32::WHITE } else { pcol })
                                             .strong()
-                                            .size(10.5),
+                                            .size(11.0),
                                     )
                                     .fill(if is_p { pcol } else { theme.surface_2 })
                                     .rounding(Rounding::same(4.0)),
@@ -2452,7 +2452,7 @@ fn render_create_task_modal(
                     ui.label(
                         egui::RichText::new("Agent phụ trách")
                             .color(theme.text_silver)
-                            .size(10.8),
+                            .size(11.0),
                     );
                     let cur_ag = composer
                         .selected_custom_agent
@@ -2508,7 +2508,7 @@ fn render_create_task_modal(
                     ui.label(
                         egui::RichText::new("Branch")
                             .color(theme.text_silver)
-                            .size(10.8),
+                            .size(11.0),
                     );
                     ui.menu_button(
                         format!(
@@ -2536,12 +2536,12 @@ fn render_create_task_modal(
                 });
 
             // Attached Skills picker
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new("Skills đính kèm:")
                         .color(theme.text_silver)
-                        .size(10.8),
+                        .size(11.0),
                 );
                 let mut rem = None;
                 for (i, s) in composer.selected_skills.iter().enumerate() {
@@ -2554,7 +2554,7 @@ fn render_create_task_modal(
                                 ui.label(
                                     egui::RichText::new(format!("${}", s))
                                         .color(theme.accent_pop)
-                                        .size(10.2),
+                                        .size(11.0),
                                 );
                                 if ui.small_button(Lucide::X).clicked() {
                                     rem = Some(i);
@@ -2568,7 +2568,7 @@ fn render_create_task_modal(
                 ui.menu_button(
                     egui::RichText::new(format!("{} Chọn skill", Lucide::PLUS))
                         .color(theme.text_silver)
-                        .size(10.2),
+                        .size(11.0),
                     |ui| {
                         for sk in skills.iter().filter(|s| s.enabled) {
                             if !composer.selected_skills.contains(&sk.name)
@@ -2582,13 +2582,13 @@ fn render_create_task_modal(
                 );
             });
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.checkbox(
                 &mut composer.auto_schedule_idle,
                 "Cho phép tự động chạy khi IDE nhàn rỗi",
             );
 
-            ui.add_space(10.0);
+            ui.add_space(12.0);
             ui.separator();
             ui.add_space(8.0);
 
@@ -2604,7 +2604,7 @@ fn render_create_task_modal(
                         )
                         .fill(theme.surface_2)
                         .stroke(Stroke::new(1.0, theme.border_strong))
-                        .rounding(Rounding::same(5.0)),
+                        .rounding(Rounding::same(8.0)),
                     )
                     .clicked()
                 {
@@ -2637,7 +2637,7 @@ fn render_create_task_modal(
                                     .size(11.0),
                             )
                             .fill(theme.accent_pop)
-                            .rounding(Rounding::same(5.0)),
+                            .rounding(Rounding::same(8.0)),
                         )
                         .clicked()
                     {
